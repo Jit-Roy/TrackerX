@@ -42,6 +42,7 @@ class TrackerXApp:
 
     def run(self) -> int:
         # Call setup_icons now that QApplication exists
+        self.window.sidebar.setup_icons()
         self.window.today.toolbar.setup_icons()
         self.window.show()
         return self.qt_app.exec()

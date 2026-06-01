@@ -43,16 +43,16 @@ class ToolBar(QWidget):
         self.add_button.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                border: 1.5px solid white;
+                border: none;
                 border-radius: 22px;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.08);
-                border: 1.5px solid white;
+                border: none;
             }
             QPushButton:pressed {
                 background: rgba(255, 255, 255, 0.15);
-                border: 1.5px solid white;
+                border: none;
             }
         """)
 
