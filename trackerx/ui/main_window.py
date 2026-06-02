@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QWidget
 
 from ..core.services import ProductivityService
-from .daily import TasksPage
+from .today import TasksPage
 from .sidebar import Sidebar
 
 
