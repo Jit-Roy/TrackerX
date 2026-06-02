@@ -36,9 +36,6 @@ class Sidebar(QFrame):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
 
-        self.brand = QLabel("TrackerX")
-        self.brand.setObjectName("Brand")
-
         self.toggle_btn = QPushButton()
         self.toggle_btn.setFixedSize(32, 32)
         self.toggle_btn.setCursor(Qt.PointingHandCursor)
@@ -57,8 +54,6 @@ class Sidebar(QFrame):
         """)
         self.toggle_btn.clicked.connect(self.toggle_sidebar)
 
-        header.addStretch()
-        header.addWidget(self.brand)
         header.addStretch()
         header.addWidget(self.toggle_btn)
 
@@ -139,7 +134,6 @@ class Sidebar(QFrame):
 
         if self.collapsed:
             self.setFixedWidth(self.collapsed_width)
-            self.brand.hide()
             self.nav.item(0).setText("☀")
             self.nav.item(0).setTextAlignment(Qt.AlignCenter)
             self._set_toggle_icon(collapsed=True)
@@ -169,8 +163,7 @@ class Sidebar(QFrame):
 
         else:
             self.setFixedWidth(self.expanded_width)
-            self.brand.show()
-            self.nav.item(0).setText("Today")
+            self.nav.item(0).setText("☀ Today")
             self.nav.item(0).setTextAlignment(Qt.AlignCenter)
             self._set_toggle_icon(collapsed=False)
 

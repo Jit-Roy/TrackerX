@@ -163,7 +163,7 @@ class TaskFormDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Task Details" if task else "Create Task")
         self.resize(500, 300)
-        self.task = task
+        self.original_task = task
         self._build_ui()
         if task:
             self._load_task(task)
@@ -209,7 +209,9 @@ class TaskFormDialog(QDialog):
         return Task(
             title=self.title.text().strip() or "Untitled task",
             description=self.description.toPlainText().strip(),
-            due_date=self._read_date(self.due_date, self.due_enabled)
+            due_date=self._read_date(self.due_date, self.due_enabled),
+            status=self.original_task.status if self.original_task else TaskStatus.TODO,
+            id=self.original_task.id if self.original_task else None
         )
 
 
