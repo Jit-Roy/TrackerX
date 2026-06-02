@@ -19,4 +19,5 @@ class Task:
     description: str = ""
     status: TaskStatus = TaskStatus.TODO
     due_date: date | None = None
+    total_tracked_seconds: int = 0
     id: int | None = None

@@ -26,12 +26,13 @@ class TaskRepository:
     def add(self, task: Task) -> int:
         with self.db.session() as conn:
             cursor = conn.execute(
-                "INSERT INTO tasks (title, description, status, due_date) VALUES (?, ?, ?, ?)",
+                "INSERT INTO tasks (title, description, status, due_date, tracked_seconds) VALUES (?, ?, ?, ?, ?)",
                 (
                     task.title,
                     task.description,
                     task.status.value,
-                    _date_str(task.due_date)
+                    _date_str(task.due_date),
+                    task.total_tracked_seconds,
                 )
             )
             return cursor.lastrowid
@@ -39,12 +40,13 @@ class TaskRepository:
     def update(self, process_id: int, task: Task) -> None:
         with self.db.session() as conn:
             conn.execute(
-                "UPDATE tasks SET title=?, description=?, status=?, due_date=? WHERE id=?",
+                "UPDATE tasks SET title=?, description=?, status=?, due_date=?, tracked_seconds=? WHERE id=?",
                 (
                     task.title,
                     task.description,
                     task.status.value,
                     _date_str(task.due_date),
+                    task.total_tracked_seconds,
                     process_id
                 )
             )
@@ -74,6 +76,7 @@ class TaskRepository:
             title=row["title"],
             description=row["description"],
             status=TaskStatus(row["status"]),
-            due_date=date.fromisoformat(row["due_date"]) if row["due_date"] else None
+            due_date=date.fromisoformat(row["due_date"]) if row["due_date"] else None,
+            total_tracked_seconds=int(row["tracked_seconds"] or 0),
         )
 

@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     status TEXT NOT NULL,
-    due_date TEXT
+    due_date TEXT,
+    tracked_seconds INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -52,11 +53,17 @@ class Database:
         conn = self.connect()
         try:
             conn.executescript(SCHEMA_SQL)
+            self._upgrade_schema(conn)
             self._seed_settings(conn)
             self._seed_reference_data(conn)
             conn.commit()
         finally:
             conn.close()
+
+    def _upgrade_schema(self, conn: sqlite3.Connection) -> None:
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+        if "tracked_seconds" not in columns:
+            conn.execute("ALTER TABLE tasks ADD COLUMN tracked_seconds INTEGER NOT NULL DEFAULT 0")
 
     def _seed_settings(self, conn: sqlite3.Connection) -> None:
         defaults = {
