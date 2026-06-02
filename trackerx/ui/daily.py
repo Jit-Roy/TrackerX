@@ -411,8 +411,10 @@ class TaskItemWidget(QWidget):
 
         if self.parent_page:
             self.parent_page.service.update_task(self.task.id, self.task)
-            if self.parent_page.active_tracker_widget is self:
-                self.parent_page.clear_active_tracker()
+            if self.task.id in self.parent_page.active_tracker_widgets:
+                del self.parent_page.active_tracker_widgets[self.task.id]
+            if self.task.id in self.parent_page.active_tracker_start_times:
+                del self.parent_page.active_tracker_start_times[self.task.id]
 
         self.progress_badge.setVisible(False)  # ← hide when paused
         self._set_tracker_button()
@@ -599,9 +601,9 @@ class TasksPage(QWidget):
         super().__init__()
         self.service = service
         self._selected_task_id: int | None = None
-        self.active_tracker_widget: TaskItemWidget | None = None
-        self.active_tracker_task_id: int | None = None
-        self.active_tracker_start_time: datetime | None = None
+            # support multiple concurrent trackers: map task_id -> widget and start time
+        self.active_tracker_widgets: dict[int, TaskItemWidget] = {}
+        self.active_tracker_start_times: dict[int, datetime] = {}
         self._build_ui()
         self.refresh()
 
@@ -665,20 +667,20 @@ class TasksPage(QWidget):
         self.toolbar.add_button.clicked.connect(self.add_task)
 
     def start_task_tracker(self, widget: TaskItemWidget) -> None:
-        if self.active_tracker_widget is widget:
+        task_id = widget.task.id
+        if task_id in self.active_tracker_widgets:
             return
-        if self.active_tracker_widget is not None:
-            self.active_tracker_widget.pause_tracker()
 
-        self.active_tracker_widget = widget
+        # start tracking for this widget without stopping others
         widget.start_tracker()
-        self.active_tracker_task_id = widget.task.id
-        self.active_tracker_start_time = widget.session_start_time
+        # record widget and start time
+        self.active_tracker_widgets[task_id] = widget
+        self.active_tracker_start_times[task_id] = widget.session_start_time
 
     def clear_active_tracker(self) -> None:
-        self.active_tracker_widget = None
-        self.active_tracker_task_id = None
-        self.active_tracker_start_time = None
+        # clear all active trackers
+        self.active_tracker_widgets.clear()
+        self.active_tracker_start_times.clear()
 
 
     def refresh(self) -> None:
@@ -689,9 +691,7 @@ class TasksPage(QWidget):
         completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
         
         # Preserve active tracker state while refreshing
-        active_task_id = self.active_tracker_task_id
-        active_start = self.active_tracker_start_time
-        self.active_tracker_widget = None
+        active_task_ids = set(self.active_tracker_widgets.keys())
 
         # Populate active tasks
         self.list_widget.clear()
@@ -699,9 +699,9 @@ class TasksPage(QWidget):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, task.id)
             widget = TaskItemWidget(task, parent=self)
-            if active_task_id == task.id and active_start is not None:
-                self.active_tracker_widget = widget
-                widget.resume_tracker(active_start)
+            if task.id in active_task_ids and self.active_tracker_start_times.get(task.id) is not None:
+                # resume concurrent tracker for this task
+                widget.resume_tracker(self.active_tracker_start_times[task.id])
             item.setSizeHint(widget.sizeHint())
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
