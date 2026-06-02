@@ -215,22 +215,51 @@ class TaskFormDialog(QDialog):
         )
 
 
-class TasksPage(QWidget):
-    def __init__(self, service: ProductivityService) -> None:
-        super().__init__()
-        self.service = service
-        self._selected_task_id: int | None = None
-        self._build_ui()
-        self.refresh()
-
-    def _build_ui(self) -> None:
+class CompletedTasksSection(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.collapsed = False
+        self.parent_page = parent
+        
         layout = QVBoxLayout(self)
-
-        # Toolbar
-        self.toolbar = ToolBar()
-        layout.addWidget(self.toolbar)
-
-        # Task list
+        layout.setContentsMargins(0, 20, 0, 0)
+        layout.setSpacing(0)
+        
+        # Header with collapse/expand button and count
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(15, 10, 15, 10)
+        
+        self.collapse_btn = QPushButton()
+        self.collapse_btn.setFixedSize(20, 20)
+        self.collapse_btn.setCursor(Qt.PointingHandCursor)
+        self.collapse_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                color: white;
+                font-size: 14px;
+                padding: 0px;
+            }
+        """)
+        self.collapse_btn.setText("▼")
+        self.collapse_btn.clicked.connect(self._toggle_collapse)
+        
+        header_layout.addStretch()
+        header_layout.addWidget(self.collapse_btn)
+        
+        self.header_label = QLabel("Completed Tasks")
+        self.header_label.setStyleSheet("font-weight: bold; font-size: 11pt; color: rgba(255, 255, 255, 0.9);")
+        header_layout.addWidget(self.header_label)
+        
+        self.count_label = QLabel("(0)")
+        self.count_label.setStyleSheet("color: rgba(255, 255, 255, 0.6); margin-left: 5px;")
+        header_layout.addWidget(self.count_label)
+        
+        header_layout.addStretch()
+        
+        layout.addLayout(header_layout)
+        
+        # List widget for completed tasks
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet("""
             QListWidget {
@@ -253,22 +282,140 @@ class TasksPage(QWidget):
             }
         """)
         layout.addWidget(self.list_widget, 1)
+        
+        # Archive button
+        self.archive_btn = QPushButton("✓ Move completed tasks to archive")
+        self.archive_btn.setStyleSheet("""
+            QPushButton {
+                    background: transparent;
+                    border: none;
+                color: white;
+                padding: 8px 12px;
+                margin: 10px 15px 15px 15px;
+            }
+        """)
+        self.archive_btn.clicked.connect(self._archive_completed)
+        layout.addWidget(self.archive_btn)
+    
+    def _toggle_collapse(self):
+        self.collapsed = not self.collapsed
+        if self.collapsed:
+            self.collapse_btn.setText("▶")
+            self.list_widget.hide()
+            self.archive_btn.hide()
+        else:
+            self.collapse_btn.setText("▼")
+            self.list_widget.show()
+            self.archive_btn.show()
+    
+    def _archive_completed(self):
+        if self.parent_page:
+            self.parent_page.archive_completed_tasks()
+    
+    def populate(self, completed_tasks):
+        self.list_widget.clear()
+        self.count_label.setText(f"({len(completed_tasks)})")
+        for task in completed_tasks:
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, task.id)
+            widget = TaskItemWidget(task, parent=self.parent_page)
+            item.setSizeHint(widget.sizeHint())
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, widget)
+
+
+class TasksPage(QWidget):
+    def __init__(self, service: ProductivityService) -> None:
+        super().__init__()
+        self.service = service
+        self._selected_task_id: int | None = None
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+
+        # Toolbar
+        self.toolbar = ToolBar()
+        layout.addWidget(self.toolbar)
+
+        # Scroll area for task content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+        """)
+        
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        # Active task list
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                background: transparent;
+                border: none;
+                outline: 0;
+            }
+
+            QListWidget::item {
+                background: transparent;
+                border: none;
+            }
+
+            QListWidget::item:selected {
+                background: transparent;
+            }
+
+            QListWidget::item:hover {
+                background: transparent;
+            }
+        """)
+        content_layout.addWidget(self.list_widget, 1)
+
+        # Completed tasks section
+        self.completed_section = CompletedTasksSection(parent=self)
+        self.completed_section.hide()
+        content_layout.addWidget(self.completed_section)
+        
+        content_layout.addStretch()
+        
+        scroll.setWidget(content_widget)
+        layout.addWidget(scroll, 1)
 
         # Connections
         self.toolbar.add_button.clicked.connect(self.add_task)
 
     def refresh(self) -> None:
         tasks = self.service.tasks.list()
+        
+        # Separate active and completed tasks
+        active_tasks = [t for t in tasks if t.status != TaskStatus.COMPLETED]
+        completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
+        
+        # Populate active tasks
         self.list_widget.clear()
-        for task in tasks:
+        for task in active_tasks:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, task.id)
             widget = TaskItemWidget(task, parent=self)
             item.setSizeHint(widget.sizeHint())
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
-        if tasks and self.list_widget.currentRow() < 0:
+        if active_tasks and self.list_widget.currentRow() < 0:
             self.list_widget.setCurrentRow(0)
+        
+        # Show/hide and populate completed tasks section
+        if completed_tasks:
+            self.completed_section.show()
+            self.completed_section.populate(completed_tasks)
+        else:
+            self.completed_section.hide()
 
     def _selected_task_id_value(self) -> int | None:
         item = self.list_widget.currentItem()
@@ -334,4 +481,11 @@ class TasksPage(QWidget):
 
     def carry_forward(self) -> None:
         self.service.tasks.carry_forward()
+        self.refresh()
+
+    def archive_completed_tasks(self) -> None:
+        tasks = self.service.tasks.list()
+        completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
+        for task in completed_tasks:
+            self.service.delete_task(task.id)
         self.refresh()

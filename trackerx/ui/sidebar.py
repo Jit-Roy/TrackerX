@@ -85,7 +85,7 @@ class Sidebar(QFrame):
             }
         """)
 
-        item = QListWidgetItem("Today")
+        item = QListWidgetItem("☀ Today")
         item.setTextAlignment(Qt.AlignCenter)
         self.nav.addItem(item)
 
