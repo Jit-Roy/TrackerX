@@ -22,6 +22,21 @@ CREATE TABLE IF NOT EXISTS tasks (
     due_date TEXT,
     tracked_seconds INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS habits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    created_date TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS habit_completions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    habit_id INTEGER NOT NULL,
+    completion_date TEXT NOT NULL,
+    FOREIGN KEY(habit_id) REFERENCES habits(id) ON DELETE CASCADE,
+    UNIQUE(habit_id, completion_date)
+);
 """
 
 

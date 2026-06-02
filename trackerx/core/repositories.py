@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .database import Database
-from .models import Task, TaskStatus
+from .models import Task, TaskStatus, Habit
 
 def _date_str(value: date | None) -> str | None:
     return value.isoformat() if value else None
@@ -78,5 +78,78 @@ class TaskRepository:
             status=TaskStatus(row["status"]),
             due_date=date.fromisoformat(row["due_date"]) if row["due_date"] else None,
             total_tracked_seconds=int(row["tracked_seconds"] or 0),
+        )
+
+
+class HabitRepository:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def list(self) -> list[Habit]:
+        with self.db.session() as conn:
+            rows = conn.execute("SELECT * FROM habits ORDER BY created_date DESC").fetchall()
+        return [self._row_to_habit(row) for row in rows]
+
+    def get(self, habit_id: int) -> Habit | None:
+        with self.db.session() as conn:
+            row = conn.execute("SELECT * FROM habits WHERE id=?", (habit_id,)).fetchone()
+        return self._row_to_habit(row) if row else None
+
+    def add(self, habit: Habit) -> int:
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO habits (title, description, created_date) VALUES (?, ?, ?)",
+                (
+                    habit.title,
+                    habit.description,
+                    _date_str(habit.created_date or date.today()),
+                )
+            )
+            return cursor.lastrowid
+
+    def update(self, habit_id: int, habit: Habit) -> None:
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE habits SET title=?, description=? WHERE id=?",
+                (habit.title, habit.description, habit_id)
+            )
+
+    def delete(self, habit_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM habits WHERE id=?", (habit_id,))
+
+    def mark_completed(self, habit_id: int, completion_date: date | None = None) -> None:
+        """Mark a habit as completed for a specific date."""
+        completion_date = completion_date or date.today()
+        with self.db.session() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO habit_completions (habit_id, completion_date) VALUES (?, ?)",
+                (habit_id, _date_str(completion_date))
+            )
+
+    def unmark_completed(self, habit_id: int, completion_date: date | None = None) -> None:
+        """Unmark a habit as completed for a specific date."""
+        completion_date = completion_date or date.today()
+        with self.db.session() as conn:
+            conn.execute(
+                "DELETE FROM habit_completions WHERE habit_id=? AND completion_date=?",
+                (habit_id, _date_str(completion_date))
+            )
+
+    def get_completions(self, habit_id: int, start_date: date, end_date: date) -> set[date]:
+        """Get all completion dates for a habit in a date range."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT completion_date FROM habit_completions WHERE habit_id=? AND completion_date BETWEEN ? AND ? ORDER BY completion_date",
+                (habit_id, _date_str(start_date), _date_str(end_date))
+            ).fetchall()
+        return {date.fromisoformat(row["completion_date"]) for row in rows}
+
+    def _row_to_habit(self, row: Any) -> Habit:
+        return Habit(
+            id=row["id"],
+            title=row["title"],
+            description=row["description"],
+            created_date=date.fromisoformat(row["created_date"]) if row["created_date"] else None,
         )
 

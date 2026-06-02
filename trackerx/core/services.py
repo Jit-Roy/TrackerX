@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from .database import Database
-from .models import TaskStatus, Task
-from .repositories import TaskRepository
+from .models import TaskStatus, Task, Habit
+from .repositories import TaskRepository, HabitRepository
 
 
 class ProductivityService:
     def __init__(self, db: Database) -> None:
         self.db = db
         self.tasks = TaskRepository(db)
+        self.habits = HabitRepository(db)
 
     def bootstrap(self) -> None:
         pass
@@ -37,4 +38,13 @@ class ProductivityService:
 
     def delete_task(self, task_id: int) -> None:
         self.tasks.delete(task_id)
+
+    def create_habit(self, habit: Habit) -> int:
+        return self.habits.add(habit)
+
+    def update_habit(self, habit_id: int, habit: Habit) -> None:
+        self.habits.update(habit_id, habit)
+
+    def delete_habit(self, habit_id: int) -> None:
+        self.habits.delete(habit_id)
 

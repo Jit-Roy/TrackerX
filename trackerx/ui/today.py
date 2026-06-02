@@ -128,6 +128,7 @@ class TaskItemWidget(QWidget):
         self.inner_widget = QWidget()
         self.inner_widget.setObjectName("taskCard")
         self.inner_widget.setFixedWidth(820)
+        self.inner_widget.setMinimumHeight(64)
 
         if is_completed:
             border_normal = "rgba(255,255,255,0.04)"
@@ -461,10 +462,25 @@ class TaskFormDialog(QDialog):
         scroll.setWidget(form_card)
         layout.addWidget(scroll)
 
-        button_box = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        # Action buttons row aligned to the right, icon-only save button
+        actions_container = QWidget()
+        actions_layout = QHBoxLayout(actions_container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.addStretch(1)
+
+        self.save_btn = QPushButton()
+        self.save_btn.setIcon(self._create_icon("save"))
+        self.save_btn.setToolTip("Save")
+        self.save_btn.setIconSize(QSize(20, 20))
+        self.save_btn.setFixedSize(36, 36)
+        self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_btn.setStyleSheet(
+            "QPushButton { background: transparent; border: none; color: #ffffff; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.08); border-radius: 10px; }"
+        )
+        self.save_btn.clicked.connect(self.accept)
+        actions_layout.addWidget(self.save_btn)
+        layout.addWidget(actions_container)
 
     def _load_task(self, task: Task) -> None:
         self.title.setText(task.title)
@@ -472,6 +488,26 @@ class TaskFormDialog(QDialog):
         self.due_enabled.setChecked(task.due_date is not None)
         if task.due_date:
             self.due_date.setDate(QDate(task.due_date.year, task.due_date.month, task.due_date.day))
+
+    def _create_icon(self, kind: str) -> QIcon:
+        pix = QPixmap(24, 24)
+        pix.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#ffffff"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+
+        if kind == "save":
+            painter.drawRect(5, 5, 14, 14)
+            painter.drawRect(5, 5, 14, 9)
+            painter.drawLine(9, 13, 9, 17)
+            painter.drawLine(15, 13, 15, 17)
+        elif kind == "cancel":
+            painter.drawLine(7, 7, 17, 17)
+            painter.drawLine(17, 7, 7, 17)
+        painter.end()
+        return QIcon(pix)
 
     def _read_date(self, widget: QDateEdit, enabled: QCheckBox) -> date | None:
         return widget.date().toPython() if enabled.isChecked() else None

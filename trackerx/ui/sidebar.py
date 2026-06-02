@@ -89,6 +89,10 @@ class Sidebar(QFrame):
         item.setTextAlignment(Qt.AlignCenter)
         self.nav.addItem(item)
 
+        habit_item = QListWidgetItem("★ Habits")
+        habit_item.setTextAlignment(Qt.AlignCenter)
+        self.nav.addItem(habit_item)
+
         side_layout.addWidget(self.nav, 1)
 
         # no addStretch or extra button at the bottom
@@ -136,6 +140,8 @@ class Sidebar(QFrame):
             self.setFixedWidth(self.collapsed_width)
             self.nav.item(0).setText("☀")
             self.nav.item(0).setTextAlignment(Qt.AlignCenter)
+            self.nav.item(1).setText("H")
+            self.nav.item(1).setTextAlignment(Qt.AlignCenter)
             self._set_toggle_icon(collapsed=True)
 
             # Collapsed: center the icon, remove horizontal padding so it fits
@@ -165,6 +171,8 @@ class Sidebar(QFrame):
             self.setFixedWidth(self.expanded_width)
             self.nav.item(0).setText("☀ Today")
             self.nav.item(0).setTextAlignment(Qt.AlignCenter)
+            self.nav.item(1).setText("★ Habits")
+            self.nav.item(1).setTextAlignment(Qt.AlignCenter)
             self._set_toggle_icon(collapsed=False)
 
             # Expanded: restore normal padding

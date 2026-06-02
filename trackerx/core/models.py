@@ -21,3 +21,11 @@ class Task:
     due_date: date | None = None
     total_tracked_seconds: int = 0
     id: int | None = None
+
+
+@dataclass(slots=True)
+class Habit:
+    title: str
+    description: str = ""
+    created_date: date | None = None
+    id: int | None = None

@@ -60,6 +60,8 @@ class ToolBar(QWidget):
         layout.addWidget(self.add_button)
         layout.addStretch()
 
+        self.setup_icons()
+
     def setup_icons(self):
         icon_svg = b"""
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
