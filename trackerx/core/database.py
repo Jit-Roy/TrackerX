@@ -37,6 +37,31 @@ CREATE TABLE IF NOT EXISTS habit_completions (
     FOREIGN KEY(habit_id) REFERENCES habits(id) ON DELETE CASCADE,
     UNIQUE(habit_id, completion_date)
 );
+
+CREATE TABLE IF NOT EXISTS weekly_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    week_start_date TEXT NOT NULL UNIQUE,
+    created_date TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS weekly_plan_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL,
+    day_of_week INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(plan_id) REFERENCES weekly_plans(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS weekly_plan_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL,
+    day_of_week INTEGER NOT NULL,
+    note TEXT DEFAULT '',
+    FOREIGN KEY(plan_id) REFERENCES weekly_plans(id) ON DELETE CASCADE,
+    UNIQUE(plan_id, day_of_week)
+);
 """
 
 

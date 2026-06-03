@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QWidget
 from ..core.services import ProductivityService
 from .today import TasksPage
 from .habit import HabitPage
+from .planner import PlannerPage
 from .sidebar import Sidebar
 
 
@@ -29,8 +30,9 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.today = TasksPage(self.service)
         self.habits = HabitPage(self.service)
+        self.planner = PlannerPage(self.service)
 
-        for page in [self.today, self.habits]:
+        for page in [self.today, self.habits, self.planner]:
             self.stack.addWidget(page)
 
         root.addWidget(self.sidebar)
@@ -43,7 +45,7 @@ class MainWindow(QMainWindow):
         self.service.refresh_overdue_tasks()
 
     def refresh_all(self) -> None:
-        for page in [self.today, self.habits]:
+        for page in [self.today, self.habits, self.planner]:
             if hasattr(page, "refresh"):
                 page.refresh()
 

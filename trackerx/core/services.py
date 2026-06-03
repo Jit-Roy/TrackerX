@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import date
+
 from .database import Database
-from .models import TaskStatus, Task, Habit
-from .repositories import TaskRepository, HabitRepository
+from .models import TaskStatus, Task, Habit, WeeklyGoalEntry, WeeklyPlan
+from .repositories import TaskRepository, HabitRepository, WeeklyPlannerRepository
 
 
 class ProductivityService:
@@ -10,6 +12,7 @@ class ProductivityService:
         self.db = db
         self.tasks = TaskRepository(db)
         self.habits = HabitRepository(db)
+        self.planner = WeeklyPlannerRepository(db)
 
     def bootstrap(self) -> None:
         pass
@@ -47,4 +50,36 @@ class ProductivityService:
 
     def delete_habit(self, habit_id: int) -> None:
         self.habits.delete(habit_id)
+
+    def get_weekly_plan(self, week_start_date: date) -> WeeklyPlan | None:
+        return self.planner.get_by_week_start(week_start_date)
+
+    def get_or_create_weekly_plan(self, week_start_date: date) -> WeeklyPlan:
+        plan = self.get_weekly_plan(week_start_date)
+        if plan:
+            return plan
+        new_plan = WeeklyPlan(
+            week_start_date=week_start_date,
+            created_date=date.today(),
+        )
+        new_plan.id = self.planner.add(new_plan)
+        return new_plan
+
+    def get_weekly_plan_notes(self, plan_id: int) -> dict[int, str]:
+        return self.planner.get_notes(plan_id)
+
+    def save_weekly_plan_note(self, plan_id: int, day_of_week: int, note: str) -> None:
+        self.planner.upsert_note(plan_id, day_of_week, note)
+
+    def create_weekly_goal_entry(self, plan_id: int, entry: WeeklyGoalEntry) -> int:
+        return self.planner.add_entry(entry, plan_id)
+
+    def update_weekly_goal_entry(self, entry_id: int, entry: WeeklyGoalEntry) -> None:
+        self.planner.update_entry(entry_id, entry)
+
+    def delete_weekly_goal_entry(self, entry_id: int) -> None:
+        self.planner.delete_entry(entry_id)
+
+    def get_weekly_goal_entry(self, entry_id: int) -> WeeklyGoalEntry | None:
+        return self.planner.get_entry(entry_id)
 
