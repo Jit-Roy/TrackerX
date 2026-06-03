@@ -65,7 +65,7 @@ _ICON_CHEVRONS_RIGHT = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 
 # Ordered nav item registry — index is stable and maps to nav rows
 _NAV_REGISTRY: list[tuple[bytes, str]] = [
-    (_ICON_SUN,      "Today"),
+    (_ICON_SUN,      "Recent"),
     (_ICON_HABITS,   "Habits"),
     (_ICON_CALENDAR, "Planner"),
 ]

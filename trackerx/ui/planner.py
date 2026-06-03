@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt, QRectF, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtCore import Qt, QRectF, QSize, Signal
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -195,6 +195,7 @@ class _GoalRow(QWidget):
         self.entry = entry
         self.parent_page = parent_page
         self.is_today = is_today
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._build()
 
     def _build(self) -> None:
@@ -212,28 +213,57 @@ class _GoalRow(QWidget):
         self.lbl = QLabel(self.entry.title or "New goal")
         self.lbl.setWordWrap(True)
         self.lbl.setStyleSheet(
-            f"color: {(_TEXT_MUT if done else _TEXT_PRI)}; font-size: 9pt; "
-            f"background: transparent;"
+            f"color: {(_TEXT_MUT if done else _TEXT_PRI)}; font-size: 10pt; "
+            f"background: transparent; letter-spacing: 0.1px;"
             + ("; text-decoration: line-through;" if done else "")
         )
         lay.addWidget(self.lbl, 1)
 
-        for icon, slot, hov in [("✎", self._edit, _TEXT_SEC), ("✕", self._delete, "#c0392b")]:
-            btn = QPushButton(icon)
-            btn.setFixedSize(18, 18)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {_TEXT_MUT}; border: none; font-size: 8pt; }}"
-                f"QPushButton:hover {{ color: {hov}; }}"
-            )
-            btn.clicked.connect(slot)
-            lay.addWidget(btn)
+        # edit button
+        edit_btn = QPushButton("✎")
+        edit_btn.setFixedSize(18, 18)
+        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {_TEXT_MUT}; border: none; font-size: 8pt; }}"
+            f"QPushButton:hover {{ color: {_TEXT_SEC}; }}"
+        )
+        edit_btn.clicked.connect(self._edit)
+        lay.addWidget(edit_btn)
+
+        # delete button uses the same simple white icon style as habit page
+        delete_btn = QPushButton()
+        delete_btn.setIcon(self._create_icon("delete"))
+        delete_btn.setToolTip("Delete")
+        delete_btn.setIconSize(QSize(16, 16))
+        delete_btn.setFixedSize(24, 24)
+        delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_btn.setStyleSheet(
+            "QPushButton { background: transparent; border: none; color: #ffffff; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.08); border-radius: 10px; }"
+        )
+        delete_btn.clicked.connect(self._delete)
+        lay.addWidget(delete_btn)
 
         self.setStyleSheet("QWidget { background: transparent; }")
 
     def _toggle(self, checked: bool) -> None:
         if self.entry.id and self.parent_page:
             self.parent_page.toggle_goal_completion(self.entry.id, checked)
+
+    def _create_icon(self, kind: str) -> QIcon:
+        pix = QPixmap(24, 24)
+        pix.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor("#ffffff"))
+        pen.setWidth(2)
+        painter.setPen(pen)
+
+        if kind == "delete":
+            painter.drawLine(7, 8, 17, 18)
+            painter.drawLine(17, 8, 7, 18)
+        painter.end()
+        return QIcon(pix)
 
     def _edit(self) -> None:
         if self.entry.id and self.parent_page:
@@ -474,7 +504,7 @@ class PlannerPage(QWidget):
 
             abbr_lbl = QLabel(abbr)
             abbr_lbl.setStyleSheet(
-                f"color: {hdr_color}; font-size: 8pt; font-weight: 700; "
+                f"color: {hdr_color}; font-size: 9pt; font-weight: 700; "
                 f"letter-spacing: 1.5px; background: transparent;"
             )
             hr_lay.addWidget(abbr_lbl)
@@ -489,7 +519,7 @@ class PlannerPage(QWidget):
 
             date_lbl = QLabel(date_str)
             date_lbl.setStyleSheet(
-                f"color: {sub_color}; font-size: 9pt; font-weight: {'600' if is_today else '400'}; "
+                f"color: {sub_color}; font-size: 10pt; font-weight: {'600' if is_today else '400'}; "
                 f"background: transparent; margin-top: 1px;"
             )
             c_lay.addWidget(date_lbl)
@@ -497,7 +527,7 @@ class PlannerPage(QWidget):
 
             goals_section = QLabel("Goals")
             goals_section.setStyleSheet(
-                f"color: {_TEXT_MUT}; font-size: 7pt; font-weight: 700; "
+                f"color: {_TEXT_MUT}; font-size: 8pt; font-weight: 700; "
                 f"letter-spacing: 1px; background: transparent;"
             )
             c_lay.addWidget(goals_section)
@@ -523,7 +553,7 @@ class PlannerPage(QWidget):
             notes_edit.setStyleSheet(
                 f"QTextEdit {{ background: {_NOTE_BG}; color: {_TEXT_SEC}; "
                 f"border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; "
-                f"padding: 6px 8px; font-size: 8.5pt; }}"
+                f"padding: 6px 8px; font-size: 9pt; }}"
                 f"QTextEdit:focus {{ border: 1px solid rgba(255,255,255,0.18); }}"
             )
             notes_edit.textChanged.connect(
