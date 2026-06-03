@@ -140,7 +140,7 @@ class Sidebar(QFrame):
             self.setFixedWidth(self.collapsed_width)
             self.nav.item(0).setText("☀")
             self.nav.item(0).setTextAlignment(Qt.AlignCenter)
-            self.nav.item(1).setText("H")
+            self.nav.item(1).setText("★")
             self.nav.item(1).setTextAlignment(Qt.AlignCenter)
             self._set_toggle_icon(collapsed=True)
 

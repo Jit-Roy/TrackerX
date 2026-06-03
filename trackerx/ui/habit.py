@@ -404,14 +404,6 @@ class HabitFormDialog(QDialog):
 
 class HabitPage(QWidget):
 
-    # Sample data — replace with real persistence
-    _HABITS = [
-        {"title": "Do gekks ...",    "days": [True,  True,  False, False, False, False, False]},
-        {"title": "Read 15 min",     "days": [True,  False, True,  True,  False, False, False]},
-        {"title": "Morning workout", "days": [False, True,  True,  False, False, False, False]},
-        {"title": "Meditate",        "days": [True,  True,  True,  False, False, False, False]},
-    ]
-
     def __init__(self, service: ProductivityService) -> None:
         super().__init__()
         self.service = service
@@ -448,21 +440,7 @@ class HabitPage(QWidget):
         self._render()
 
     def _load_habits(self) -> list[Habit]:
-        habits = self.service.habits.list()
-        if not habits:
-            self._seed_default_habits()
-            habits = self.service.habits.list()
-        return habits
-
-    def _seed_default_habits(self) -> None:
-        days = self._week_days()
-        day_dates = [d for _, _, d in days]
-        for sample in self._HABITS:
-            habit = Habit(title=sample["title"], description="")
-            habit_id = self.service.create_habit(habit)
-            for completed, completion_date in zip(sample["days"], day_dates):
-                if completed:
-                    self.service.habits.mark_completed(habit_id, completion_date)
+        return self.service.habits.list()
 
     def _toggle_completion(self, habit_id: int, completion_date: date, active: bool) -> None:
         if active:
@@ -584,7 +562,6 @@ class HabitPage(QWidget):
         habits_layout.setSpacing(0)
 
         habits_layout.addWidget(_DayHeader(days, today_col=today_i))
-        habits_layout.addWidget(_HDiv())
 
         day_dates = [d for _, _, d in days]
         for habit in habits:
@@ -601,7 +578,6 @@ class HabitPage(QWidget):
                     parent_page=self,
                 )
             )
-            habits_layout.addWidget(_HDiv())
 
         habits_layout.addStretch(1)
 
