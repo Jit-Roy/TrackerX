@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtSvg import QSvgRenderer
 
+from .icons import build_orbit_icon
+
 
 class CircleCheck(QCheckBox):
     def __init__(self, parent=None):
@@ -433,6 +435,7 @@ class TaskItemWidget(QWidget):
 class TaskFormDialog(QDialog):
     def __init__(self, parent=None, task: Task | None = None) -> None:
         super().__init__(parent)
+        self.setWindowIcon(build_orbit_icon(16))
         self.setWindowTitle("Task Details" if task else "Create Task")
         self.resize(500, 300)
         self.original_task = task

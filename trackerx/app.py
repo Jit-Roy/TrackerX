@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QStyle, QSystemTrayIcon
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+
+from .ui.icons import build_orbit_icon
 
 from .config import APP_PATHS
 from .core.database import Database
@@ -18,23 +20,20 @@ class TrackerXApp:
         self.qt_app.setOrganizationName("TrackerX")
         self.database = Database(APP_PATHS.database_path)
         self.service = ProductivityService(self.database)
+        self.app_icon = build_orbit_icon(256)
+        self.qt_app.setWindowIcon(self.app_icon)
         self.window = MainWindow(self.service)
+        self.window.setWindowIcon(self.app_icon)
+
         self.tray = QSystemTrayIcon()
         self.tray.setToolTip("TrackerX")
-        tray_icon = self._build_tray_icon()
-        if not tray_icon.isNull():
-            self.tray.setIcon(tray_icon)
+        self.tray.setIcon(self._build_tray_icon())
         if QSystemTrayIcon.isSystemTrayAvailable() and not self.tray.icon().isNull():
             self.tray.show()
         self.apply_theme(self.service.get_setting("theme", "dark"))
 
     def _build_tray_icon(self) -> QIcon:
-        style_icon = self.qt_app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-        if not style_icon.isNull():
-            return style_icon
-        pixmap = QPixmap(16, 16)
-        pixmap.fill(Qt.GlobalColor.blue)
-        return QIcon(pixmap)
+        return build_orbit_icon(16)
 
     def apply_theme(self, mode: str) -> None:
         self.service.set_setting("theme", mode)

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from ..core.models import WeeklyGoalEntry, WeeklyPlan
 from ..core.services import ProductivityService
+from .icons import build_orbit_icon
 
 
 # ── Palette ────────────────────────────────────────────────────────────────────
@@ -283,6 +284,7 @@ class GoalFormDialog(QDialog):
         day_label: str = "",
     ) -> None:
         super().__init__(parent)
+        self.setWindowIcon(build_orbit_icon(16))
         self.setWindowTitle("Edit Goal" if entry else "Add Goal")
         self.setModal(True)
         self.resize(400, 160)

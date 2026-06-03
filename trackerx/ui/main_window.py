@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QWidget
 
+from .icons import build_orbit_icon
 from ..core.services import ProductivityService
 from .recent import TasksPage
 from .habit import HabitPage
@@ -14,6 +15,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.service = service
         self.setWindowTitle("TrackerX")
+        self.setWindowIcon(build_orbit_icon(128))
         self.resize(1520, 960)
         self._build_ui()
         self._wire_services()

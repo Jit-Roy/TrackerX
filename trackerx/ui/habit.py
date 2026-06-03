@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .icons import build_orbit_icon
+
 from ..core.models import Habit
 from ..core.services import ProductivityService
 from .toolbar import ToolBar
@@ -291,6 +293,7 @@ class _HabitRow(QWidget):
 class HabitFormDialog(QDialog):
     def __init__(self, parent=None, habit: Habit | None = None) -> None:
         super().__init__(parent)
+        self.setWindowIcon(build_orbit_icon(16))
         self.setWindowTitle("Habit Details" if habit else "Create Habit")
         self.resize(500, 200)
         self.original_habit = habit
