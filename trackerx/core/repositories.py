@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .database import Database
-from .models import Task, TaskStatus, Habit, WeeklyPlan, WeeklyGoalEntry
+from .models import Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyPlan, WeeklyGoalEntry
 
 def _date_str(value: date | None) -> str | None:
     return value.isoformat() if value else None
@@ -322,5 +322,82 @@ class WeeklyPlannerRepository:
             title=row["title"],
             day_of_week=int(row["day_of_week"]),
             completed=bool(row["completed"]),
+        )
+
+
+class ProjectRepository:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def list(self) -> list[Project]:
+        with self.db.session() as conn:
+            rows = conn.execute("SELECT * FROM projects ORDER BY id DESC").fetchall()
+        projects = [self._row_to_project(row) for row in rows]
+        for project in projects:
+            if project.id is not None:
+                project.ideas = self.list_ideas(project.id)
+        return projects
+
+    def get(self, project_id: int) -> Project | None:
+        with self.db.session() as conn:
+            row = conn.execute("SELECT * FROM projects WHERE id=?", (project_id,)).fetchone()
+        if not row:
+            return None
+        project = self._row_to_project(row)
+        project.ideas = self.list_ideas(project_id)
+        return project
+
+    def add(self, project: Project) -> int:
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO projects (title, description) VALUES (?, ?)",
+                (project.title, project.description),
+            )
+            return cursor.lastrowid
+
+    def update(self, project_id: int, project: Project) -> None:
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE projects SET title=?, description=? WHERE id=?",
+                (project.title, project.description, project_id),
+            )
+
+    def delete(self, project_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
+
+    def list_ideas(self, project_id: int) -> list[ProjectIdea]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM project_ideas WHERE project_id=? ORDER BY id DESC",
+                (project_id,),
+            ).fetchall()
+        return [self._row_to_project_idea(row) for row in rows]
+
+    def add_idea(self, project_id: int, idea: ProjectIdea) -> int:
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO project_ideas (project_id, title) VALUES (?, ?)",
+                (project_id, idea.title),
+            )
+            return cursor.lastrowid
+
+    def delete_idea(self, idea_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM project_ideas WHERE id=?", (idea_id,))
+
+    def _row_to_project(self, row: Any) -> Project:
+        return Project(
+            id=row["id"],
+            title=row["title"],
+            description=row["description"],
+            ideas=[],
+        )
+
+    def _row_to_project_idea(self, row: Any) -> ProjectIdea:
+        return ProjectIdea(
+            id=row["id"],
+            project_id=row["project_id"],
+            title=row["title"],
         )
 

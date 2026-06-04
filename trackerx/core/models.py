@@ -47,3 +47,18 @@ class WeeklyPlan:
     entries: list[WeeklyGoalEntry] = field(default_factory=list)
     created_date: date | None = None
     id: int | None = None
+
+
+@dataclass
+class ProjectIdea:
+    id: int | None
+    project_id: int | None
+    title: str
+
+
+@dataclass
+class Project:
+    id: int | None
+    title: str
+    description: str = ""
+    ideas: list[ProjectIdea] = field(default_factory=list)

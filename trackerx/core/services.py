@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date
 
 from .database import Database
-from .models import TaskStatus, Task, Habit, WeeklyGoalEntry, WeeklyPlan
-from .repositories import TaskRepository, HabitRepository, WeeklyPlannerRepository
+from .models import Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyGoalEntry, WeeklyPlan
+from .repositories import TaskRepository, HabitRepository, WeeklyPlannerRepository, ProjectRepository
 
 
 class ProductivityService:
@@ -13,6 +13,7 @@ class ProductivityService:
         self.tasks = TaskRepository(db)
         self.habits = HabitRepository(db)
         self.planner = WeeklyPlannerRepository(db)
+        self.projects = ProjectRepository(db)
 
     def bootstrap(self) -> None:
         pass
@@ -82,4 +83,25 @@ class ProductivityService:
 
     def get_weekly_goal_entry(self, entry_id: int) -> WeeklyGoalEntry | None:
         return self.planner.get_entry(entry_id)
+
+    def list_projects(self) -> list[Project]:
+        return self.projects.list()
+
+    def get_project(self, project_id: int) -> Project | None:
+        return self.projects.get(project_id)
+
+    def create_project(self, project: Project) -> int:
+        return self.projects.add(project)
+
+    def update_project(self, project_id: int, project: Project) -> None:
+        self.projects.update(project_id, project)
+
+    def delete_project(self, project_id: int) -> None:
+        self.projects.delete(project_id)
+
+    def add_project_idea(self, project_id: int, idea: ProjectIdea) -> int:
+        return self.projects.add_idea(project_id, idea)
+
+    def delete_project_idea(self, idea_id: int) -> None:
+        self.projects.delete_idea(idea_id)
 
