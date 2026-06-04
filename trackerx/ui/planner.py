@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt, QRectF, QSize, Signal
+from PySide6.QtCore import Qt, QRectF, QSize, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -569,9 +569,29 @@ class PlannerPage(QWidget):
         scroll.setWidget(body)
         self.content_layout.addWidget(scroll, 1)
 
+        today_index = next(
+            (idx for idx, (_, _, d) in enumerate(days) if d == today),
+            None,
+        )
+        if today_index is not None:
+            self._center_today_card(scroll, today_index)
+
         self.setUpdatesEnabled(True)
 
     # ── Navigation ─────────────────────────────────────────────────────────────
+    def _center_today_card(self, scroll: QScrollArea, day_index: int) -> None:
+        def center() -> None:
+            bar = scroll.horizontalScrollBar()
+            viewport_width = scroll.viewport().width()
+            card_width = _DAY_WIDTH
+            card_spacing = 10
+            left_margin = 28
+            x_center = left_margin + day_index * (card_width + card_spacing) + card_width / 2
+            target = int(x_center - viewport_width / 2)
+            bar.setValue(max(0, min(target, bar.maximum())))
+
+        QTimer.singleShot(0, center)
+
     def _jump(self, delta: int) -> None:
         self.week_offset += delta
         self._render()

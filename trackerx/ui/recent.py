@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -53,10 +54,8 @@ class CircleCheck(QCheckBox):
             pen = QPen(QColor('#ffffff'))
             pen.setWidth(2)
             painter.setPen(pen)
-            # coordinates relative to widget size
             w = r.width()
             h = r.height()
-            # simple tick: start lower-left, middle, upper-right
             p1 = (int(w * 0.28), int(h * 0.55))
             p2 = (int(w * 0.45), int(h * 0.72))
             p3 = (int(w * 0.75), int(h * 0.32))
@@ -64,6 +63,7 @@ class CircleCheck(QCheckBox):
             painter.drawLine(p2[0], p2[1], p3[0], p3[1])
 
         painter.end()
+
 
 from ..core.models import Task, TaskStatus
 from ..core.services import ProductivityService
@@ -105,15 +105,36 @@ _TRACKER_BTN_LIVE = """
     }
 """
 
+_ADD_TODAY_BTN = """
+    QPushButton {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 8px;
+        color: #c8c8cc;
+        font-size: 8pt;
+        padding: 2px 8px;
+        letter-spacing: 0.2px;
+    }
+    QPushButton:hover {
+        background: rgba(255,255,255,0.13);
+        border: 1px solid rgba(255,255,255,0.26);
+        color: #ffffff;
+    }
+    QPushButton:pressed {
+        background: rgba(255,255,255,0.04);
+    }
+"""
+
 
 class TaskItemWidget(QWidget):
     """Monochrome task row widget."""
 
-    def __init__(self, task: Task, parent=None):
+    def __init__(self, task: Task, parent=None, is_overdue: bool = False):
         super().__init__(parent)
         self.task = task
         self.parent_page = parent
         self.is_tracking = False
+        self.is_overdue = is_overdue
         self.session_start_time: datetime | None = None
 
         self.tracker_timer = QTimer(self)
@@ -137,6 +158,11 @@ class TaskItemWidget(QWidget):
             border_hover  = "rgba(255,255,255,0.07)"
             bg_normal     = "#161618"
             bg_hover      = "#1c1c1e"
+        elif is_overdue:
+            border_normal = "rgba(255,255,255,0.09)"
+            border_hover  = "rgba(255,255,255,0.17)"
+            bg_normal     = "#1e1c1c"
+            bg_hover      = "#252223"
         else:
             border_normal = "rgba(255,255,255,0.08)"
             border_hover  = "rgba(255,255,255,0.16)"
@@ -167,12 +193,16 @@ class TaskItemWidget(QWidget):
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(12)
 
-        # Left accent strip — uniform grey, no status colour
+        # Left accent strip — slightly warm grey for overdue, no status colour elsewhere
         accent = QWidget()
         accent.setFixedWidth(3)
-        accent.setStyleSheet(
-            f"QWidget {{ background: {'#2a2a2c' if is_completed else '#3a3a3c'}; border-radius: 2px; }}"
-        )
+        if is_completed:
+            accent_color = "#2a2a2c"
+        elif is_overdue:
+            accent_color = "#4a3c3a"   # warm-tinged grey for visual distinction
+        else:
+            accent_color = "#3a3a3c"
+        accent.setStyleSheet(f"QWidget {{ background: {accent_color}; border-radius: 2px; }}")
         layout.addWidget(accent, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         # ── Circular checkbox ──────────────────────────────────────────────
@@ -192,6 +222,11 @@ class TaskItemWidget(QWidget):
                 "color: #484848; text-decoration: line-through; "
                 "font-size: 11pt; background: transparent; letter-spacing: 0.1px;"
             )
+        elif is_overdue:
+            title.setStyleSheet(
+                "color: #c8c8cc; font-size: 11pt; font-weight: 500; "
+                "background: transparent; letter-spacing: 0.1px;"
+            )
         else:
             title.setStyleSheet(
                 "color: #e8e8ed; font-size: 11pt; font-weight: 500; "
@@ -200,7 +235,6 @@ class TaskItemWidget(QWidget):
         text_layout.addWidget(title)
 
         # Badge is always created but only shown while tracker is actively running.
-        # start_tracker / resume_tracker show it; pause_tracker hides it.
         self.progress_badge = QLabel("● Tracking")
         self.progress_badge.setStyleSheet(
             "color: #8e8e93; font-size: 7.5pt; background: transparent; letter-spacing: 0.5px;"
@@ -228,14 +262,11 @@ class TaskItemWidget(QWidget):
         self.tracker_btn = QPushButton("▶")
         self.tracker_btn.setFixedSize(28, 28)
         self.tracker_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        # Use a symbol font that renders the pause glyph in monochrome
-        # (prevents platform color emoji rendering which can appear blue)
         self.tracker_btn.setFont(QFont("Segoe UI Symbol", 10))
         self.tracker_btn.setStyleSheet(_TRACKER_BTN_IDLE)
         self.tracker_btn.clicked.connect(self._toggle_tracker)
         self._set_tracker_button()
-        if self.is_completed:
-            # completed tasks should not be trackable
+        if self.is_completed or self.is_overdue:
             self.tracker_btn.setEnabled(False)
             self.tracker_btn.setCursor(Qt.CursorShape.ArrowCursor)
 
@@ -244,10 +275,10 @@ class TaskItemWidget(QWidget):
 
         # Date chip — monochrome; overdue/today use brighter grey instead of red
         if task.due_date:
-            today_flag = task.due_date == date.today()
-            overdue    = task.due_date < date.today()
+            today_flag   = task.due_date == date.today()
+            overdue_flag = task.due_date < date.today()
 
-            if today_flag or overdue:
+            if today_flag or overdue_flag:
                 chip_color  = "#e8e8ed"
                 chip_bg     = "rgba(255,255,255,0.08)"
                 chip_border = "rgba(255,255,255,0.20)"
@@ -280,6 +311,20 @@ class TaskItemWidget(QWidget):
             right_layout.addWidget(self.date_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         else:
             self.date_label = QLabel()
+
+        # ── "Add to Today" button — only rendered for overdue task cards ──
+        if is_overdue:
+            sep2 = QWidget()
+            sep2.setFixedSize(1, 18)
+            sep2.setStyleSheet("background: rgba(255,255,255,0.08);")
+            right_layout.addWidget(sep2, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+            self.add_today_btn = QPushButton("↺  Add to today")
+            self.add_today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.add_today_btn.setStyleSheet(_ADD_TODAY_BTN)
+            self.add_today_btn.setFixedHeight(24)
+            self.add_today_btn.clicked.connect(self._add_to_today)
+            right_layout.addWidget(self.add_today_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self.flag_label = QLabel()
         self.flag_label.hide()
@@ -372,8 +417,8 @@ class TaskItemWidget(QWidget):
         self.parent_page.refresh()
 
     def _toggle_tracker(self) -> None:
-        # Do not start or toggle tracker for completed tasks
-        if self.task.status == TaskStatus.COMPLETED:
+        # Do not start or toggle tracker for completed or overdue tasks
+        if self.task.status == TaskStatus.COMPLETED or self.is_overdue:
             return
         if self.is_tracking:
             self.pause_tracker()
@@ -382,9 +427,17 @@ class TaskItemWidget(QWidget):
         else:
             self.start_tracker()
 
+    def _add_to_today(self) -> None:
+        """Reschedule this overdue task to today and move it back to the active list."""
+        if not self.parent_page:
+            return
+        self.task.due_date = date.today()
+        self.parent_page.service.update_task(self.task.id, self.task)
+        self.parent_page.refresh()
+
     def start_tracker(self) -> None:
-        # Don't start tracker for completed tasks
-        if self.task.status == TaskStatus.COMPLETED:
+        # Don't start tracker for completed or overdue tasks
+        if self.task.status == TaskStatus.COMPLETED or self.is_overdue:
             return
         if self.is_tracking:
             return
@@ -395,7 +448,7 @@ class TaskItemWidget(QWidget):
 
         self.is_tracking = True
         self.session_start_time = datetime.now()
-        self.progress_badge.setVisible(True)   # ← show only when live
+        self.progress_badge.setVisible(True)
         self._set_tracker_button()
         self._update_tracked_time_label()
         self.tracker_timer.start()
@@ -419,14 +472,14 @@ class TaskItemWidget(QWidget):
             if self.task.id in self.parent_page.active_tracker_start_times:
                 del self.parent_page.active_tracker_start_times[self.task.id]
 
-        self.progress_badge.setVisible(False)  # ← hide when paused
+        self.progress_badge.setVisible(False)
         self._set_tracker_button()
         self._update_tracked_time_label()
 
     def resume_tracker(self, start_time: datetime) -> None:
         self.is_tracking = True
         self.session_start_time = start_time
-        self.progress_badge.setVisible(True)   # ← restore on resume
+        self.progress_badge.setVisible(True)
         self._set_tracker_button()
         self._update_tracked_time_label()
         self.tracker_timer.start()
@@ -445,7 +498,7 @@ class TaskFormDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         form_card = QWidget()
@@ -461,7 +514,7 @@ class TaskFormDialog(QDialog):
         form.addRow("Title", self.title)
         form.addRow("Description", self.description)
         form.addRow(self.due_enabled, self.due_date)
-        
+
         scroll.setWidget(form_card)
         layout.addWidget(scroll)
 
@@ -526,88 +579,199 @@ class TaskFormDialog(QDialog):
         )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Shared list-widget stylesheet (used by all three section widgets)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LIST_WIDGET_STYLE = """
+    QListWidget {
+        background: transparent;
+        border: none;
+        outline: 0;
+    }
+    QListWidget::item {
+        background: transparent;
+        border: none;
+    }
+    QListWidget::item:selected {
+        background: transparent;
+    }
+    QListWidget::item:hover {
+        background: transparent;
+    }
+"""
+
+
+class OverdueTasksSection(QWidget):
+    """Collapsible section that surfaces tasks whose deadline has passed."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.collapsed = False
+        self.parent_page = parent
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 8, 0, 0)
+        layout.setSpacing(0)
+
+        # ── Divider above the section ──────────────────────────────────────
+        top_divider = QWidget()
+        top_divider.setFixedHeight(1)
+        top_divider.setStyleSheet("background: rgba(255,255,255,0.07);")
+        layout.addWidget(top_divider)
+
+        # ── Header row ────────────────────────────────────────────────────
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(15, 10, 15, 10)
+
+        self.collapse_btn = QPushButton()
+        self.collapse_btn.setFixedSize(20, 20)
+        self.collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.collapse_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                color: #c8c8cc;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover { color: #ffffff; }
+        """)
+        self.collapse_btn.setText("▼")
+        self.collapse_btn.clicked.connect(self._toggle_collapse)
+
+        header_layout.addStretch()
+        header_layout.addWidget(self.collapse_btn)
+
+        self.header_label = QLabel("Overdue")
+        self.header_label.setStyleSheet(
+            "font-weight: bold; font-size: 11pt; color: #c8c8cc; margin-left: 6px;"
+        )
+        header_layout.addWidget(self.header_label)
+
+        self.count_label = QLabel("(0)")
+        self.count_label.setStyleSheet(
+            "color: rgba(255,255,255,0.4); font-size: 10pt; margin-left: 5px;"
+        )
+        header_layout.addWidget(self.count_label)
+
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+
+        # ── Task list ──────────────────────────────────────────────────────
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet(_LIST_WIDGET_STYLE)
+        layout.addWidget(self.list_widget, 1)
+
+    # ── Collapse / expand ──────────────────────────────────────────────────
+
+    def _toggle_collapse(self):
+        self.collapsed = not self.collapsed
+        if self.collapsed:
+            self.collapse_btn.setText("▶")
+            self.list_widget.hide()
+        else:
+            self.collapse_btn.setText("▼")
+            self.list_widget.show()
+
+    # ── Populate ───────────────────────────────────────────────────────────
+
+    def populate(self, overdue_tasks: list[Task]) -> None:
+        self.list_widget.clear()
+        self.count_label.setText(f"({len(overdue_tasks)})")
+        for task in overdue_tasks:
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, task.id)
+            widget = TaskItemWidget(task, parent=self.parent_page, is_overdue=True)
+            item.setSizeHint(widget.sizeHint())
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, widget)
+
+
 class CompletedTasksSection(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.collapsed = False
         self.parent_page = parent
-        
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 20, 0, 0)
+        layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(0)
-        
-        # Header with collapse/expand button and count
+
+        # ── Divider above the section ──────────────────────────────────────
+        top_divider = QWidget()
+        top_divider.setFixedHeight(1)
+        top_divider.setStyleSheet("background: rgba(255,255,255,0.07);")
+        layout.addWidget(top_divider)
+
+        # ── Header row ────────────────────────────────────────────────────
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(15, 10, 15, 10)
-        
+
         self.collapse_btn = QPushButton()
         self.collapse_btn.setFixedSize(20, 20)
-        self.collapse_btn.setCursor(Qt.PointingHandCursor)
+        self.collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.collapse_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 border: none;
                 color: white;
-                font-size: 14px;
+                font-size: 12px;
                 padding: 0px;
             }
+            QPushButton:hover { color: #ffffff; }
         """)
         self.collapse_btn.setText("▼")
         self.collapse_btn.clicked.connect(self._toggle_collapse)
-        
+
         header_layout.addStretch()
         header_layout.addWidget(self.collapse_btn)
-        
+
         self.header_label = QLabel("Completed Tasks")
-        self.header_label.setStyleSheet("font-weight: bold; font-size: 11pt; color: rgba(255, 255, 255, 0.9);")
+        self.header_label.setStyleSheet(
+            "font-weight: bold; font-size: 11pt; color: rgba(255,255,255,0.9); margin-left: 6px;"
+        )
         header_layout.addWidget(self.header_label)
-        
+
         self.count_label = QLabel("(0)")
-        self.count_label.setStyleSheet("color: rgba(255, 255, 255, 0.6); margin-left: 5px;")
+        self.count_label.setStyleSheet(
+            "color: rgba(255,255,255,0.6); font-size: 10pt; margin-left: 5px;"
+        )
         header_layout.addWidget(self.count_label)
-        
+
         header_layout.addStretch()
-        
         layout.addLayout(header_layout)
-        
-        # List widget for completed tasks
+
+        # ── Task list ──────────────────────────────────────────────────────
         self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                background: transparent;
-                border: none;
-                outline: 0;
-            }
-
-            QListWidget::item {
-                background: transparent;
-                border: none;
-            }
-
-            QListWidget::item:selected {
-                background: transparent;
-            }
-
-            QListWidget::item:hover {
-                background: transparent;
-            }
-        """)
+        self.list_widget.setStyleSheet(_LIST_WIDGET_STYLE)
         layout.addWidget(self.list_widget, 1)
-        
-        # Archive button
+
+        # ── Archive button ─────────────────────────────────────────────────
         self.archive_btn = QPushButton("✓ Move completed tasks to archive")
+        self.archive_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # shrink to content so hover background only covers the text area
+        self.archive_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.archive_btn.setStyleSheet("""
             QPushButton {
-                    background: transparent;
-                    border: none;
-                color: white;
+                background: transparent;
+                border: none;
+                color: #c8c8cc;
                 padding: 8px 12px;
                 margin: 10px 15px 15px 15px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                color: #e8e8ed;
+                background: rgba(255,255,255,0.03);
+            }
+            QPushButton:pressed {
+                background: rgba(255,255,255,0.06);
             }
         """)
         self.archive_btn.clicked.connect(self._archive_completed)
-        layout.addWidget(self.archive_btn)
-    
+        layout.addWidget(self.archive_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
     def _toggle_collapse(self):
         self.collapsed = not self.collapsed
         if self.collapsed:
@@ -618,12 +782,12 @@ class CompletedTasksSection(QWidget):
             self.collapse_btn.setText("▼")
             self.list_widget.show()
             self.archive_btn.show()
-    
+
     def _archive_completed(self):
         if self.parent_page:
             self.parent_page.archive_completed_tasks()
-    
-    def populate(self, completed_tasks):
+
+    def populate(self, completed_tasks: list[Task]) -> None:
         self.list_widget.clear()
         self.count_label.setText(f"({len(completed_tasks)})")
         for task in completed_tasks:
@@ -640,7 +804,7 @@ class TasksPage(QWidget):
         super().__init__()
         self.service = service
         self._selected_task_id: int | None = None
-            # support multiple concurrent trackers: map task_id -> widget and start time
+        # support multiple concurrent trackers: map task_id -> widget and start time
         self.active_tracker_widgets: dict[int, TaskItemWidget] = {}
         self.active_tracker_start_times: dict[int, datetime] = {}
         self._build_ui()
@@ -662,97 +826,111 @@ class TasksPage(QWidget):
                 border: none;
             }
         """)
-        
+
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        # Active task list
+        # ── Active task list ───────────────────────────────────────────────
         self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                background: transparent;
-                border: none;
-                outline: 0;
-            }
-
-            QListWidget::item {
-                background: transparent;
-                border: none;
-            }
-
-            QListWidget::item:selected {
-                background: transparent;
-            }
-
-            QListWidget::item:hover {
-                background: transparent;
-            }
-        """)
+        self.list_widget.setStyleSheet(_LIST_WIDGET_STYLE)
         content_layout.addWidget(self.list_widget, 1)
 
-        # Completed tasks section
+        # ── Overdue tasks section (hidden until there are overdue tasks) ───
+        self.overdue_section = OverdueTasksSection(parent=self)
+        self.overdue_section.hide()
+        content_layout.addWidget(self.overdue_section)
+
+        # ── Completed tasks section ────────────────────────────────────────
         self.completed_section = CompletedTasksSection(parent=self)
         self.completed_section.hide()
         content_layout.addWidget(self.completed_section)
-        
+
         content_layout.addStretch()
-        
+
         scroll.setWidget(content_widget)
         layout.addWidget(scroll, 1)
 
         # Connections
         self.toolbar.add_button.clicked.connect(self.add_task)
 
+    # ─────────────────────────────────────────────────────────────────────
+    #  Tracker management
+    # ─────────────────────────────────────────────────────────────────────
+
     def start_task_tracker(self, widget: TaskItemWidget) -> None:
         task_id = widget.task.id
         if task_id in self.active_tracker_widgets:
             return
 
-        # start tracking for this widget without stopping others
         widget.start_tracker()
-        # record widget and start time
         self.active_tracker_widgets[task_id] = widget
         self.active_tracker_start_times[task_id] = widget.session_start_time
 
     def clear_active_tracker(self) -> None:
-        # clear all active trackers
         self.active_tracker_widgets.clear()
         self.active_tracker_start_times.clear()
 
+    # ─────────────────────────────────────────────────────────────────────
+    #  Refresh
+    # ─────────────────────────────────────────────────────────────────────
 
     def refresh(self) -> None:
         tasks = self.service.tasks.list()
-        
-        # Separate active and completed tasks
-        active_tasks = [t for t in tasks if t.status != TaskStatus.COMPLETED]
+        today = date.today()
+
+        # ── Categorise tasks into three buckets ───────────────────────────
+        # overdue: not completed, has a past due date
+        # active:  not completed, no due date OR due date is today or future
+        # completed: status == COMPLETED (regardless of date)
+        active_tasks = [
+            t for t in tasks
+            if t.status != TaskStatus.COMPLETED
+            and (t.due_date is None or t.due_date >= today)
+        ]
+        overdue_tasks = [
+            t for t in tasks
+            if t.status != TaskStatus.COMPLETED
+            and t.due_date is not None
+            and t.due_date < today
+        ]
         completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
-        
-        # Preserve active tracker state while refreshing
+
+        # Preserve running tracker state across the refresh
         active_task_ids = set(self.active_tracker_widgets.keys())
 
-        # Populate active tasks
+        # ── Populate active tasks ──────────────────────────────────────────
         self.list_widget.clear()
         for task in active_tasks:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, task.id)
             widget = TaskItemWidget(task, parent=self)
             if task.id in active_task_ids and self.active_tracker_start_times.get(task.id) is not None:
-                # resume concurrent tracker for this task
                 widget.resume_tracker(self.active_tracker_start_times[task.id])
             item.setSizeHint(widget.sizeHint())
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
         if active_tasks and self.list_widget.currentRow() < 0:
             self.list_widget.setCurrentRow(0)
-        
-        # Show/hide and populate completed tasks section
+
+        # ── Populate / hide overdue section ───────────────────────────────
+        if overdue_tasks:
+            self.overdue_section.show()
+            self.overdue_section.populate(overdue_tasks)
+        else:
+            self.overdue_section.hide()
+
+        # ── Populate / hide completed section ─────────────────────────────
         if completed_tasks:
             self.completed_section.show()
             self.completed_section.populate(completed_tasks)
         else:
             self.completed_section.hide()
+
+    # ─────────────────────────────────────────────────────────────────────
+    #  Task CRUD helpers
+    # ─────────────────────────────────────────────────────────────────────
 
     def _selected_task_id_value(self) -> int | None:
         item = self.list_widget.currentItem()
