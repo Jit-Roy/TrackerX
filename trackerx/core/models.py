@@ -49,6 +49,13 @@ class WeeklyPlan:
     id: int | None = None
 
 
+@dataclass(slots=True)
+class DiaryEntry:
+    entry_date: date
+    content: str = ""
+    id: int | None = None
+
+
 @dataclass
 class ProjectIdea:
     id: int | None

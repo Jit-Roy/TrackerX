@@ -75,6 +75,12 @@ CREATE TABLE IF NOT EXISTS weekly_plan_notes (
     FOREIGN KEY(plan_id) REFERENCES weekly_plans(id) ON DELETE CASCADE,
     UNIQUE(plan_id, day_of_week)
 );
+
+CREATE TABLE IF NOT EXISTS diary_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_date TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL
+);
 """
 
 

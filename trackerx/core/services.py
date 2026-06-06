@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date
 
 from .database import Database
-from .models import Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyGoalEntry, WeeklyPlan
-from .repositories import TaskRepository, HabitRepository, WeeklyPlannerRepository, ProjectRepository
+from .models import DiaryEntry, Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyGoalEntry, WeeklyPlan
+from .repositories import TaskRepository, HabitRepository, WeeklyPlannerRepository, ProjectRepository, DiaryRepository
 
 
 class ProductivityService:
@@ -14,6 +14,7 @@ class ProductivityService:
         self.habits = HabitRepository(db)
         self.planner = WeeklyPlannerRepository(db)
         self.projects = ProjectRepository(db)
+        self.diary = DiaryRepository(db)
 
     def bootstrap(self) -> None:
         pass
@@ -54,6 +55,23 @@ class ProductivityService:
 
     def get_weekly_plan(self, week_start_date: date) -> WeeklyPlan | None:
         return self.planner.get_by_week_start(week_start_date)
+
+    def get_diary_entry(self, entry_date: date) -> DiaryEntry | None:
+        return self.diary.get_by_date(entry_date)
+
+    def list_diary_entries(self) -> list[DiaryEntry]:
+        return self.diary.list()
+
+    def create_diary_entry(self, entry: DiaryEntry) -> int:
+        return self.diary.add(entry)
+
+    def update_diary_entry(self, entry: DiaryEntry) -> None:
+        if entry.id is None:
+            return
+        self.diary.update(entry.id, entry)
+
+    def delete_diary_entry(self, entry_id: int) -> None:
+        self.diary.delete(entry_id)
 
     def get_or_create_weekly_plan(self, week_start_date: date) -> WeeklyPlan:
         plan = self.get_weekly_plan(week_start_date)

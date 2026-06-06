@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtSvg import QSvgRenderer
 
-from .icons import build_orbit_icon
+from .helper.icons import build_orbit_icon
 
 
 class CircleCheck(QCheckBox):
@@ -67,7 +67,7 @@ class CircleCheck(QCheckBox):
 
 from ..core.models import Task, TaskStatus
 from ..core.services import ProductivityService
-from .toolbar import ToolBar
+from .helper.toolbar import ToolBar
 
 _TRACKER_BTN_IDLE = """
     QPushButton {

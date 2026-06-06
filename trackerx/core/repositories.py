@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .database import Database
-from .models import Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyPlan, WeeklyGoalEntry
+from .models import DiaryEntry, Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyPlan, WeeklyGoalEntry
 
 def _date_str(value: date | None) -> str | None:
     return value.isoformat() if value else None
@@ -322,6 +322,50 @@ class WeeklyPlannerRepository:
             title=row["title"],
             day_of_week=int(row["day_of_week"]),
             completed=bool(row["completed"]),
+        )
+
+
+class DiaryRepository:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def list(self) -> list[DiaryEntry]:
+        with self.db.session() as conn:
+            rows = conn.execute("SELECT * FROM diary_entries ORDER BY entry_date DESC").fetchall()
+        return [self._row_to_entry(row) for row in rows]
+
+    def get_by_date(self, entry_date: date) -> DiaryEntry | None:
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM diary_entries WHERE entry_date = ?",
+                (_date_str(entry_date),),
+            ).fetchone()
+        return self._row_to_entry(row) if row else None
+
+    def add(self, entry: DiaryEntry) -> int:
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO diary_entries (entry_date, content) VALUES (?, ?)",
+                (_date_str(entry.entry_date), entry.content),
+            )
+            return cursor.lastrowid
+
+    def update(self, entry_id: int, entry: DiaryEntry) -> None:
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE diary_entries SET content = ? WHERE id = ?",
+                (entry.content, entry_id),
+            )
+
+    def delete(self, entry_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM diary_entries WHERE id = ?", (entry_id,))
+
+    def _row_to_entry(self, row: Any) -> DiaryEntry:
+        return DiaryEntry(
+            id=row["id"],
+            entry_date=date.fromisoformat(row["entry_date"]),
+            content=row["content"],
         )
 
 

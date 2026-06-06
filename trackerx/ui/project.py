@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (
 
 from ..core.models import Project, ProjectIdea
 from ..core.services import ProductivityService
-from .icons import build_orbit_icon
-from .toolbar import ToolBar
+from .helper.icons import build_orbit_icon
+from .helper.toolbar import ToolBar
 
 
 # ── Strict B&W / Grey Palette ──────────────────────────────────────────────────

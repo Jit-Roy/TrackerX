@@ -54,6 +54,13 @@ _ICON_PROJECTS = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
   <path d="M7 7.5V5.5H13V7.5" stroke="white" stroke-width="1.55" stroke-linecap="round"/>
 </svg>"""
 
+_ICON_JOURNAL = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+  <rect x="4" y="3" width="12" height="14" rx="2" stroke="white" stroke-width="1.55"/>
+  <line x1="6" y1="7" x2="14" y2="7" stroke="white" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="6" y1="10" x2="14" y2="10" stroke="white" stroke-width="1.4" stroke-linecap="round"/>
+  <line x1="6" y1="13" x2="14" y2="13" stroke="white" stroke-width="1.4" stroke-linecap="round"/>
+</svg>"""
+
 # Toggle chevrons
 _ICON_CHEVRONS_LEFT = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
   <path d="M12 5.5L8 10L12 14.5" stroke="white" stroke-width="1.6"
@@ -74,6 +81,7 @@ _NAV_REGISTRY: list[tuple[bytes, str]] = [
     (_ICON_SUN,      "Recent"),
     (_ICON_HABITS,   "Habits"),
     (_ICON_CALENDAR, "Planner"),
+    (_ICON_JOURNAL, "Diary"),
     (_ICON_PROJECTS, "Projects"),
 ]
 

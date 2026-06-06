@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from .ui.icons import build_orbit_icon
+from .ui.helper.icons import build_orbit_icon
 
 from .config import APP_PATHS
 from .core.database import Database

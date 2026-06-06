@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from ..core.models import WeeklyGoalEntry, WeeklyPlan
 from ..core.services import ProductivityService
-from .icons import build_orbit_icon
+from .helper.icons import build_orbit_icon
 
 
 # ── Palette ────────────────────────────────────────────────────────────────────

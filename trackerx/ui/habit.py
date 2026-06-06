@@ -20,11 +20,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .icons import build_orbit_icon
+from .helper.icons import build_orbit_icon
 
 from ..core.models import Habit
 from ..core.services import ProductivityService
-from .toolbar import ToolBar
+from .helper.toolbar import ToolBar
 
 # ─────────────────────────── palette ────────────────────────────────────────
 _BG         = "#111111"
