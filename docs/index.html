@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrackerX - Local-First Productivity Suite</title>
+    <meta name="description" content="TrackerX is a premium local-first desktop productivity suite with Habit Tracking, Task Planner, Project Management, and Personal Diary.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #030014;
+            --text-color: #f1f5f9;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.5);
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --font: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Ambient Glow Backgrounds */
+        .glow-bg {
+            position: fixed;
+            width: 70vw;
+            height: 70vh;
+            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 60%);
+            top: -20vh;
+            left: -20vw;
+            opacity: 0.35;
+            filter: blur(120px);
+            z-index: -1;
+            animation: pulse 12s infinite alternate;
+        }
+        
+        .glow-bg-2 {
+            position: fixed;
+            width: 60vw;
+            height: 60vh;
+            background: radial-gradient(circle, rgba(236, 72, 153, 0.25) 0%, transparent 70%);
+            bottom: -20vh;
+            right: -10vw;
+            opacity: 0.3;
+            filter: blur(100px);
+            z-index: -1;
+            animation: pulse 10s infinite alternate-reverse;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1) translate(0, 0); opacity: 0.2; }
+            100% { transform: scale(1.1) translate(20px, 20px); opacity: 0.4; }
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 5%;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 100;
+            backdrop-filter: blur(15px);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: rgba(3, 0, 20, 0.5);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #ffffff, #a5b4fc);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 999px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            border: none;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            background: #4f46e5;
+            box-shadow: 0 0 30px var(--primary-glow);
+            border-color: transparent;
+        }
+
+        /* Hero Section */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 10rem 5% 4rem;
+            position: relative;
+            z-index: 10;
+        }
+
+        .badge {
+            padding: 0.5rem 1.25rem;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #a5b4fc;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            letter-spacing: 0.5px;
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            font-size: clamp(3rem, 7vw, 5.5rem);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            max-width: 900px;
+            letter-spacing: -1.5px;
+        }
+
+        h1 span {
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            max-width: 600px;
+            margin-bottom: 3rem;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 5rem;
+        }
+
+        .hero-image-container {
+            width: 100%;
+            max-width: 1100px;
+            perspective: 1200px;
+            margin-bottom: 4rem;
+        }
+
+        .hero-image {
+            width: 100%;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(99, 102, 241, 0.2);
+            transform: rotateX(8deg) translateY(0);
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% { transform: rotateX(4deg) translateY(0px); }
+            50% { transform: rotateX(4deg) translateY(-20px); }
+            100% { transform: rotateX(4deg) translateY(0px); }
+        }
+
+        /* Features Section */
+        .features {
+            padding: 6rem 5%;
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 4rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 2.5rem 2rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.05);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .icon-box {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: rgba(99, 102, 241, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            color: #a5b4fc;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .card:hover .icon-box {
+            transform: scale(1.1) rotate(5deg);
+            background: rgba(99, 102, 241, 0.2);
+            color: #fff;
+        }
+
+        .icon-box svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: #f8fafc;
+        }
+
+        .card p {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+
+        /* Showcase Grid Section */
+        .showcase {
+            padding: 8rem 5%;
+            background: linear-gradient(to bottom, transparent, rgba(99, 102, 241, 0.05));
+            border-top: 1px solid var(--card-border);
+            border-bottom: 1px solid var(--card-border);
+        }
+        
+        .showcase-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .showcase-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2.5rem;
+            margin-top: 4rem;
+        }
+
+        .showcase-item {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+            transition: all 0.5s ease;
+        }
+
+        .showcase-item::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 50%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .showcase-img {
+            width: 100%;
+            height: auto;
+            display: block;
+            filter: grayscale(30%) brightness(0.8);
+            transition: all 0.5s ease;
+        }
+
+        .showcase-item:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 30px rgba(99,102,241,0.2);
+            border-color: rgba(99, 102, 241, 0.4);
+            z-index: 2;
+        }
+
+        .showcase-item:hover::after {
+            opacity: 1;
+        }
+
+        .showcase-item:hover .showcase-img {
+            filter: grayscale(0%) brightness(1);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 4rem 5%;
+            color: #475569;
+            font-size: 0.95rem;
+            background: #02000a;
+        }
+
+        /* Utilities / Scroll Animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s cubic-bezier(0.5, 0, 0, 1);
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .delay-1 { transition-delay: 0.1s; }
+        .delay-2 { transition-delay: 0.2s; }
+        .delay-3 { transition-delay: 0.3s; }
+
+        @media (max-width: 768px) {
+            .hero-actions { flex-direction: column; width: 100%; max-width: 300px; }
+            .btn { justify-content: center; }
+            h1 { font-size: 2.75rem; }
+            .hero { padding-top: 8rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="glow-bg"></div>
+    <div class="glow-bg-2"></div>
+
+    <header>
+        <div class="logo">TrackerX</div>
+        <a href="https://github.com/Jit-Roy/TrackerX" class="btn">
+            <svg style="margin-right:8px; width:20px; height:20px" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            GitHub
+        </a>
+    </header>
+
+    <section class="hero">
+        <div class="badge reveal">Open Source & Local First</div>
+        <h1 class="reveal delay-1">Master Your <span>Productivity</span></h1>
+        <p class="reveal delay-2">A beautiful, local-first desktop suite. Manage habits, tasks, projects, and your personal diary seamlessly on your machine.</p>
+        
+        <div class="hero-actions reveal delay-3">
+            <a href="https://github.com/Jit-Roy/TrackerX/releases" class="btn btn-primary">Download App</a>
+            <a href="#features" class="btn">Explore Features</a>
+        </div>
+
+        <div class="hero-image-container reveal">
+            <img src="img/1.png" alt="TrackerX Dashboard" class="hero-image">
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <h2 class="section-title reveal">Everything you need, in one place.</h2>
+        <div class="grid">
+            <div class="card reveal">
+                <div class="icon-box">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <h3>Habit Tracking</h3>
+                <p>Build and maintain positive habits with an intuitive, visual tracker that keeps you motivated every day.</p>
+            </div>
+            
+            <div class="card reveal delay-1">
+                <div class="icon-box">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <h3>Task Planner</h3>
+                <p>Organize your daily schedule and to-do lists effectively with powerful scheduling and prioritization tools.</p>
+            </div>
+
+            <div class="card reveal delay-2">
+                <div class="icon-box">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+                <h3>Project Management</h3>
+                <p>Break down your largest goals into manageable projects and sub-tasks to ensure steady progress over time.</p>
+            </div>
+
+            <div class="card reveal delay-3">
+                <div class="icon-box">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                </div>
+                <h3>Personal Diary</h3>
+                <p>Keep a secure, completely local journal for your daily thoughts, reflections, and deep work logs.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="showcase">
+        <div class="showcase-inner">
+            <h2 class="section-title reveal">Designed for Focus</h2>
+            <div class="showcase-grid">
+                <div class="showcase-item reveal">
+                    <img src="img/2.png" alt="TrackerX Focus View" class="showcase-img">
+                </div>
+                <div class="showcase-item reveal delay-1">
+                    <img src="img/3.png" alt="TrackerX Planner View" class="showcase-img">
+                </div>
+                <div class="showcase-item reveal delay-2">
+                    <img src="img/4.png" alt="TrackerX Analytics View" class="showcase-img">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 TrackerX. Built with PySide6 & Python.</p>
+    </footer>
+
+    <script>
+        // Intersection Observer for scroll reveal animations
+        const revealElements = document.querySelectorAll('.reveal');
+        
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.15
+        };
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                    observer.unobserve(entry.target); // Optional: stop observing once revealed
+                }
+            });
+        }, observerOptions);
+
+        revealElements.forEach(el => observer.observe(el));
+    </script>
+</body>
+</html>
