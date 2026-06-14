@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/img/Banner.png" alt="TrackerX Banner">
+</p>
+
 # TrackerX
 
 TrackerX is a local-first, privacy-focused desktop productivity suite built with Python and PySide6. It provides a comprehensive set of tools to help you manage your daily tasks, habits, projects, and personal journal, all in one sleek, modern desktop application.
