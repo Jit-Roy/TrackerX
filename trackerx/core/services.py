@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date
 
 from .database import Database
-from .models import DiaryEntry, Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyGoalEntry, WeeklyPlan
-from .repositories import TaskRepository, HabitRepository, WeeklyPlannerRepository, ProjectRepository, DiaryRepository
+from .models import DiaryEntry, Habit, Note, NoteNode, NoteNotebook, NoteSection, Project, ProjectIdea, Task, TaskStatus, WeeklyGoalEntry, WeeklyPlan
+from .repositories import TaskRepository, HabitRepository, NoteNodeRepository, NoteRepository, WeeklyPlannerRepository, ProjectRepository, DiaryRepository
 
 
 class ProductivityService:
@@ -15,6 +15,8 @@ class ProductivityService:
         self.planner = WeeklyPlannerRepository(db)
         self.projects = ProjectRepository(db)
         self.diary = DiaryRepository(db)
+        self.note_repo = NoteRepository(db)
+        self.nodes = NoteNodeRepository(db)
 
     def bootstrap(self) -> None:
         pass
@@ -123,3 +125,75 @@ class ProductivityService:
     def delete_project_idea(self, idea_id: int) -> None:
         self.projects.delete_idea(idea_id)
 
+    # ── Notes ─────────────────────────────────────────────────────────────────
+
+    def list_notebooks(self) -> list[NoteNotebook]:
+        return self.note_repo.list_notebooks()
+
+    def create_notebook(self, nb: NoteNotebook) -> int:
+        return self.note_repo.add_notebook(nb)
+
+    def rename_notebook(self, nb_id: int, title: str) -> None:
+        self.note_repo.rename_notebook(nb_id, title)
+
+    def delete_notebook(self, nb_id: int) -> None:
+        self.note_repo.delete_notebook(nb_id)
+
+    def list_sections(self, notebook_id: int) -> list[NoteSection]:
+        return self.note_repo.list_sections(notebook_id)
+
+    def create_section(self, section: NoteSection) -> int:
+        return self.note_repo.add_section(section)
+
+    def rename_section(self, section_id: int, title: str) -> None:
+        self.note_repo.rename_section(section_id, title)
+
+    def delete_section(self, section_id: int) -> None:
+        self.note_repo.delete_section(section_id)
+
+    def list_notes(self, section_id: int) -> list[Note]:
+        return self.note_repo.list_notes(section_id)
+
+    def get_note(self, note_id: int) -> Note | None:
+        return self.note_repo.get_note(note_id)
+
+    def create_note(self, note: Note) -> int:
+        return self.note_repo.add_note(note)
+
+    def update_note(self, note_id: int, content: str, title: str) -> None:
+        self.note_repo.update_note_content(note_id, content, title)
+
+    def rename_note(self, note_id: int, title: str) -> None:
+        self.note_repo.rename_note(note_id, title)
+
+    def delete_note(self, note_id: int) -> None:
+        self.note_repo.delete_note(note_id)
+
+    # ── NoteNode (infinite tree) ────────────────────────────────────────────
+
+    def get_root_nodes(self) -> list[NoteNode]:
+        return self.nodes.get_roots()
+
+    def get_node_children(self, parent_id: int) -> list[NoteNode]:
+        return self.nodes.get_children(parent_id)
+
+    def node_has_children(self, node_id: int) -> bool:
+        return self.nodes.has_children(node_id)
+
+    def get_node(self, node_id: int) -> NoteNode | None:
+        return self.nodes.get(node_id)
+
+    def create_node(self, node: NoteNode) -> int:
+        return self.nodes.add(node)
+
+    def update_node(self, node_id: int, content: str, title: str) -> None:
+        self.nodes.update(node_id, content, title)
+
+    def rename_node(self, node_id: int, title: str) -> None:
+        self.nodes.rename(node_id, title)
+
+    def delete_node(self, node_id: int) -> None:
+        self.nodes.delete(node_id)
+
+    def search_nodes(self, query: str) -> list[NoteNode]:
+        return self.nodes.search(query)

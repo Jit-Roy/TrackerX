@@ -81,6 +81,40 @@ CREATE TABLE IF NOT EXISTS diary_entries (
     entry_date TEXT NOT NULL UNIQUE,
     content TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS note_notebooks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    created_date TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS note_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    notebook_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(notebook_id) REFERENCES note_notebooks(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT 'Untitled',
+    content TEXT DEFAULT '',
+    updated_at TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(section_id) REFERENCES note_sections(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS note_nodes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_id  INTEGER,
+    title      TEXT    NOT NULL DEFAULT 'Untitled',
+    content    TEXT    DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT    NOT NULL DEFAULT '',
+    FOREIGN KEY(parent_id) REFERENCES note_nodes(id) ON DELETE CASCADE
+);
 """
 
 

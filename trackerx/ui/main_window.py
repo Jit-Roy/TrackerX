@@ -8,6 +8,7 @@ from .recent import TasksPage
 from .habit import HabitPage
 from .planner import PlannerPage
 from .diary import DiaryPage
+from .notes import NotesPage
 from .project import ProjectPage
 from .helper.sidebar import Sidebar
 
@@ -36,9 +37,10 @@ class MainWindow(QMainWindow):
         self.habits = HabitPage(self.service)
         self.planner = PlannerPage(self.service)
         self.diary = DiaryPage(self.service)
+        self.notes = NotesPage(self.service)
         self.projects = ProjectPage(self.service)
 
-        for page in [self.today, self.habits, self.planner, self.diary, self.projects]:
+        for page in [self.today, self.habits, self.planner, self.diary, self.notes, self.projects]:
             self.stack.addWidget(page)
 
         root.addWidget(self.sidebar)
@@ -51,7 +53,7 @@ class MainWindow(QMainWindow):
         self.service.refresh_overdue_tasks()
 
     def refresh_all(self) -> None:
-        for page in [self.today, self.habits, self.planner, self.diary, self.projects]:
+        for page in [self.today, self.habits, self.planner, self.diary, self.notes, self.projects]:
             if hasattr(page, "refresh"):
                 page.refresh()
 

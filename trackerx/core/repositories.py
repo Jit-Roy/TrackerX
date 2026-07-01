@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .database import Database
-from .models import DiaryEntry, Habit, Project, ProjectIdea, Task, TaskStatus, WeeklyPlan, WeeklyGoalEntry
+from .models import DiaryEntry, Habit, Note, NoteNode, NoteNotebook, NoteSection, Project, ProjectIdea, Task, TaskStatus, WeeklyPlan, WeeklyGoalEntry
 
 def _date_str(value: date | None) -> str | None:
     return value.isoformat() if value else None
@@ -445,3 +445,230 @@ class ProjectRepository:
             title=row["title"],
         )
 
+
+class NoteRepository:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    # ── Notebooks ────────────────────────────────────────────────────────────
+
+    def list_notebooks(self) -> list[NoteNotebook]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM note_notebooks ORDER BY created_date ASC, id ASC"
+            ).fetchall()
+        return [self._row_to_notebook(row) for row in rows]
+
+    def add_notebook(self, nb: NoteNotebook) -> int:
+        from datetime import date as _date
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO note_notebooks (title, created_date) VALUES (?, ?)",
+                (nb.title, _date_str(nb.created_date or _date.today())),
+            )
+            return cursor.lastrowid
+
+    def rename_notebook(self, nb_id: int, title: str) -> None:
+        with self.db.session() as conn:
+            conn.execute("UPDATE note_notebooks SET title=? WHERE id=?", (title, nb_id))
+
+    def delete_notebook(self, nb_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM note_notebooks WHERE id=?", (nb_id,))
+
+    # ── Sections ─────────────────────────────────────────────────────────────
+
+    def list_sections(self, notebook_id: int) -> list[NoteSection]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM note_sections WHERE notebook_id=? ORDER BY sort_order ASC, id ASC",
+                (notebook_id,),
+            ).fetchall()
+        return [self._row_to_section(row) for row in rows]
+
+    def add_section(self, section: NoteSection) -> int:
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO note_sections (notebook_id, title, sort_order) VALUES (?, ?, ?)",
+                (section.notebook_id, section.title, section.sort_order),
+            )
+            return cursor.lastrowid
+
+    def rename_section(self, section_id: int, title: str) -> None:
+        with self.db.session() as conn:
+            conn.execute("UPDATE note_sections SET title=? WHERE id=?", (title, section_id))
+
+    def delete_section(self, section_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM note_sections WHERE id=?", (section_id,))
+
+    # ── Notes ─────────────────────────────────────────────────────────────────
+
+    def list_notes(self, section_id: int) -> list[Note]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM notes WHERE section_id=? ORDER BY sort_order ASC, id ASC",
+                (section_id,),
+            ).fetchall()
+        return [self._row_to_note(row) for row in rows]
+
+    def get_note(self, note_id: int) -> Note | None:
+        with self.db.session() as conn:
+            row = conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+        return self._row_to_note(row) if row else None
+
+    def add_note(self, note: Note) -> int:
+        from datetime import datetime
+        ts = note.updated_at or datetime.now().isoformat(timespec="seconds")
+        with self.db.session() as conn:
+            cursor = conn.execute(
+                "INSERT INTO notes (section_id, title, content, updated_at, sort_order) VALUES (?, ?, ?, ?, ?)",
+                (note.section_id, note.title, note.content, ts, note.sort_order),
+            )
+            return cursor.lastrowid
+
+    def update_note_content(self, note_id: int, content: str, title: str) -> None:
+        from datetime import datetime
+        ts = datetime.now().isoformat(timespec="seconds")
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE notes SET content=?, title=?, updated_at=? WHERE id=?",
+                (content, title, ts, note_id),
+            )
+
+    def rename_note(self, note_id: int, title: str) -> None:
+        from datetime import datetime
+        ts = datetime.now().isoformat(timespec="seconds")
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE notes SET title=?, updated_at=? WHERE id=?",
+                (title, ts, note_id),
+            )
+
+    def delete_note(self, note_id: int) -> None:
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
+
+    # ── Row mappers ───────────────────────────────────────────────────────────
+
+    def _row_to_notebook(self, row: Any) -> NoteNotebook:
+        from datetime import date as _date
+        return NoteNotebook(
+            id=row["id"],
+            title=row["title"],
+            created_date=_date.fromisoformat(row["created_date"]) if row["created_date"] else None,
+        )
+
+    def _row_to_section(self, row: Any) -> NoteSection:
+        return NoteSection(
+            id=row["id"],
+            notebook_id=row["notebook_id"],
+            title=row["title"],
+            sort_order=int(row["sort_order"]),
+        )
+
+    def _row_to_note(self, row: Any) -> Note:
+        return Note(
+            id=row["id"],
+            section_id=row["section_id"],
+            title=row["title"],
+            content=row["content"] or "",
+            updated_at=row["updated_at"] or "",
+            sort_order=int(row["sort_order"]),
+        )
+
+
+class NoteNodeRepository:
+    """CRUD for the self-referential note_nodes table."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    # ── Queries ─────────────────────────────────────────────────────────
+
+    def get_roots(self) -> list[NoteNode]:
+        """Return all top-level nodes (parent_id IS NULL)."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM note_nodes WHERE parent_id IS NULL ORDER BY sort_order, id"
+            ).fetchall()
+        return [self._to_node(r) for r in rows]
+
+    def get_children(self, parent_id: int) -> list[NoteNode]:
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM note_nodes WHERE parent_id=? ORDER BY sort_order, id",
+                (parent_id,),
+            ).fetchall()
+        return [self._to_node(r) for r in rows]
+
+    def has_children(self, node_id: int) -> bool:
+        with self.db.session() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM note_nodes WHERE parent_id=?", (node_id,)
+            ).fetchone()[0]
+        return count > 0
+
+    def get(self, node_id: int) -> NoteNode | None:
+        with self.db.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM note_nodes WHERE id=?", (node_id,)
+            ).fetchone()
+        return self._to_node(row) if row else None
+
+    # ── Mutations ────────────────────────────────────────────────────────
+
+    def add(self, node: NoteNode) -> int:
+        from datetime import datetime
+        ts = node.updated_at or datetime.now().isoformat(timespec="seconds")
+        with self.db.session() as conn:
+            cur = conn.execute(
+                "INSERT INTO note_nodes (parent_id, title, content, sort_order, updated_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (node.parent_id, node.title, node.content, node.sort_order, ts),
+            )
+            return cur.lastrowid
+
+    def update(self, node_id: int, content: str, title: str) -> None:
+        from datetime import datetime
+        ts = datetime.now().isoformat(timespec="seconds")
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE note_nodes SET content=?, title=?, updated_at=? WHERE id=?",
+                (content, title, ts, node_id),
+            )
+
+    def rename(self, node_id: int, title: str) -> None:
+        from datetime import datetime
+        ts = datetime.now().isoformat(timespec="seconds")
+        with self.db.session() as conn:
+            conn.execute(
+                "UPDATE note_nodes SET title=?, updated_at=? WHERE id=?",
+                (title, ts, node_id),
+            )
+
+    def delete(self, node_id: int) -> None:
+        """Cascade handled by SQLite FK."""
+        with self.db.session() as conn:
+            conn.execute("DELETE FROM note_nodes WHERE id=?", (node_id,))
+
+    def search(self, query: str) -> list[NoteNode]:
+        """Return all nodes whose title contains query (case-insensitive)."""
+        with self.db.session() as conn:
+            rows = conn.execute(
+                "SELECT * FROM note_nodes WHERE title LIKE ? ORDER BY title",
+                (f"%{query}%",),
+            ).fetchall()
+        return [self._to_node(r) for r in rows]
+
+    # ── Mapper ───────────────────────────────────────────────────────────
+
+    def _to_node(self, row: Any) -> NoteNode:
+        return NoteNode(
+            id=row["id"],
+            parent_id=row["parent_id"],
+            title=row["title"],
+            content=row["content"] or "",
+            sort_order=int(row["sort_order"]),
+            updated_at=row["updated_at"] or "",
+        )

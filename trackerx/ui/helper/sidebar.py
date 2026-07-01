@@ -61,6 +61,16 @@ _ICON_JOURNAL = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" 
   <line x1="6" y1="13" x2="14" y2="13" stroke="white" stroke-width="1.4" stroke-linecap="round"/>
 </svg>"""
 
+_ICON_NOTES = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
+  <rect x="3" y="3" width="11" height="14" rx="2" stroke="white" stroke-width="1.5"/>
+  <line x1="5.5" y1="7"  x2="11.5" y2="7"  stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+  <line x1="5.5" y1="10" x2="11.5" y2="10" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+  <line x1="5.5" y1="13" x2="9"    y2="13" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
+  <path d="M13.5 12.5 L16.5 9.5 L17.5 10.5 L14.5 13.5 Z" fill="white" opacity="0.9"/>
+  <line x1="13.5" y1="12.5" x2="13" y2="14.5" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="13" y1="14.5" x2="15" y2="14" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+</svg>"""
+
 # Toggle chevrons
 _ICON_CHEVRONS_LEFT = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none">
   <path d="M12 5.5L8 10L12 14.5" stroke="white" stroke-width="1.6"
@@ -81,7 +91,8 @@ _NAV_REGISTRY: list[tuple[bytes, str]] = [
     (_ICON_SUN,      "Recent"),
     (_ICON_HABITS,   "Habits"),
     (_ICON_CALENDAR, "Planner"),
-    (_ICON_JOURNAL, "Diary"),
+    (_ICON_JOURNAL,  "Diary"),
+    (_ICON_NOTES,    "Notes"),
     (_ICON_PROJECTS, "Projects"),
 ]
 

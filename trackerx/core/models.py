@@ -69,3 +69,40 @@ class Project:
     title: str
     description: str = ""
     ideas: list[ProjectIdea] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class NoteNotebook:
+    title: str
+    created_date: date | None = None
+    id: int | None = None
+
+
+@dataclass(slots=True)
+class NoteSection:
+    notebook_id: int
+    title: str
+    sort_order: int = 0
+    id: int | None = None
+
+
+@dataclass(slots=True)
+class Note:
+    section_id: int
+    title: str = "Untitled"
+    content: str = ""
+    updated_at: str = ""
+    sort_order: int = 0
+    id: int | None = None
+
+
+@dataclass(slots=True)
+class NoteNode:
+    """Infinite-depth tree node: can be a folder or a leaf note."""
+    title: str
+    parent_id: int | None = None
+    content: str = ""
+    sort_order: int = 0
+    updated_at: str = ""
+    id: int | None = None
+
