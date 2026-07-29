@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('D:\\Personal Projects\\Trackerx\\.venv\\Lib\\site-packages\\PySide6\\plugins', 'PySide6/plugins')],
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -32,7 +32,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets\\orbit.ico'],
 )
 coll = COLLECT(
     exe,
