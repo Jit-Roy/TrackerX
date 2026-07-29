@@ -4,13 +4,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
-from .ui.helper.icons import build_orbit_icon
+from ui.helper.icons import build_orbit_icon
 
-from .config import APP_PATHS
-from .core.database import Database
-from .core.services import ProductivityService
-from .core.theme import DARK_THEME, LIGHT_THEME
-from .ui.main_window import MainWindow
+from config import APP_PATHS
+from core.database import Database
+from core.services import ProductivityService
+from core.theme import DARK_THEME, LIGHT_THEME
+from ui.main_window import MainWindow
 
 
 class TrackerXApp:

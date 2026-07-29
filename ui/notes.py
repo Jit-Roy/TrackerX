@@ -9,7 +9,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal, QSize, QByteArray
 from PySide6.QtGui import (
     QAction, QBrush, QColor, QFont, QPainter, QPen, QPixmap, QIcon,
-    QTextBlockFormat, QTextCursor,
+    QTextBlockFormat, QTextCursor, QTextOption,
 )
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.models import NoteNode
-from ..core.services import ProductivityService
+from core.models import NoteNode
+from core.services import ProductivityService
 
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -129,6 +129,36 @@ def _vdiv(color: str = _DIVIDER) -> QFrame:
     f.setFixedWidth(1)
     f.setStyleSheet(f"background: {color}; border: none;")
     return f
+
+
+# ── Auto-height wrapping title editor ─────────────────────────────────────────
+
+class _AutoHeightEdit(QTextEdit):
+    """QTextEdit that wraps text and auto-resizes its height to fit content."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWordWrapMode(QTextOption.WrapMode.WordWrap)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFrameShape(QTextEdit.Shape.NoFrame)
+        self.setTabChangesFocus(True)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.document().documentLayout().documentSizeChanged.connect(self._adjust_height)
+
+    def _adjust_height(self, size) -> None:
+        self.setFixedHeight(max(int(size.height()) + 16, 44))
+        self.updateGeometry()
+
+    # Compat helpers so call-sites can stay the same
+    def text(self) -> str:
+        return self.toPlainText()
+
+    def setText(self, text: str) -> None:
+        self.setPlainText(text)
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self.setTextCursor(cursor)
 
 
 # ── Toast Notification ────────────────────────────────────────────────────────
@@ -257,6 +287,7 @@ class _NodeRow(QWidget):
 
         # Actions wrapper (+ and Trash)
         self._actions_wrap = QWidget()
+        self._actions_wrap.setStyleSheet("background: transparent;")
         self._actions_wrap.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         al = QHBoxLayout(self._actions_wrap)
         al.setContentsMargins(0, 0, 0, 0)
@@ -790,37 +821,42 @@ class _EditorPanel(QWidget):
         pl.setContentsMargins(0, 0, 0, 0)
         pl.setSpacing(0)
 
-        # Title + last-edited bar
+        # Title + last-edited bar — stacked vertically so title never clips
         tbar = QWidget()
-        tbar.setFixedHeight(64)
         tbar.setStyleSheet(f"background: {_RIGHT_BG};")
-        tbl = QHBoxLayout(tbar)
-        tbl.setContentsMargins(40, 0, 40, 0)
-        tbl.setSpacing(12)
+        tbl = QVBoxLayout(tbar)
+        tbl.setContentsMargins(40, 12, 40, 8)
+        tbl.setSpacing(2)
 
-        self._title_edit = QLineEdit()
-        self._title_edit.setPlaceholderText("Page title")
-        tf = QFont()
-        tf.setPointSize(20)
-        tf.setWeight(QFont.Weight.Bold)
-        self._title_edit.setFont(tf)
-        self._title_edit.setStyleSheet(
-            f"QLineEdit {{"
-            f"  background: transparent; border: none; color: {_T_PRI};"
-            f"  font-size: 20pt; font-weight: 700;"
-            f"  selection-background-color: rgba(255,255,255,0.12);"
-            f"}}"
-        )
-        self._title_edit.textChanged.connect(self._on_change)
-        tbl.addWidget(self._title_edit, 1)
-
+        # Timestamp row (top-right aligned)
+        ts_row = QHBoxLayout()
+        ts_row.setContentsMargins(0, 0, 0, 0)
+        ts_row.addStretch(1)
         self._ts_lbl = QLabel()
         self._ts_lbl.setStyleSheet(
             f"color: {_T_TER}; font-size: 7.5pt; font-family: '{_MONO}';"
             "letter-spacing: 0.3px; background: transparent;"
         )
         self._ts_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        tbl.addWidget(self._ts_lbl)
+        ts_row.addWidget(self._ts_lbl)
+        tbl.addLayout(ts_row)
+
+        # Title input — auto-height, wraps long titles
+        self._title_edit = _AutoHeightEdit()
+        tf = QFont()
+        tf.setPointSize(20)
+        tf.setWeight(QFont.Weight.Bold)
+        self._title_edit.setFont(tf)
+        self._title_edit.setStyleSheet(
+            f"QTextEdit {{"
+            f"  background: transparent; border: none; color: {_T_PRI};"
+            f"  font-size: 20pt; font-weight: 700;"
+            f"  selection-background-color: rgba(255,255,255,0.12);"
+            f"  padding: 0px;"
+            f"}}"
+        )
+        self._title_edit.textChanged.connect(self._on_change)
+        tbl.addWidget(self._title_edit)
 
         pl.addWidget(tbar)
         pl.addWidget(_hdiv("rgba(255,255,255,0.10)"))
@@ -883,7 +919,7 @@ class _EditorPanel(QWidget):
         self._title_edit.blockSignals(True)
         self._editor.blockSignals(True)
 
-        self._title_edit.setText(title)
+        self._title_edit.setText(title)  # setText compat method handles cursor reset
         self._editor.setPlainText(content)
         self._ts_lbl.setText(self._fmt_timestamp(updated_at))
 

@@ -19,10 +19,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QFrame,
+    QGridLayout,
 )
 
-from ..core.models import Project, ProjectIdea
-from ..core.services import ProductivityService
+from core.models import Project, ProjectIdea
+from core.services import ProductivityService
 from .helper.icons import build_orbit_icon
 from .helper.toolbar import ToolBar
 
@@ -659,9 +660,26 @@ class ProjectPage(QWidget):
         super().__init__()
         self.service = service
         self._all_projects: list[Project] = []
+        self._current_cols = 4
         self.setStyleSheet(f"background: {_BG};")
         self._build_ui()
         self.refresh()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        
+        # Use event.size().width() because self._scroll.viewport() hasn't been 
+        # resized by the layout engine yet when this event first fires!
+        page_w = event.size().width()
+        margins = 72  # 36 left + 36 right
+        scrollbar_allowance = 20
+        available = page_w - margins - scrollbar_allowance
+        
+        cols = max(1, (available + _CARD_GAP) // (_CARD_W + _CARD_GAP))
+        
+        if cols != self._current_cols:
+            self._current_cols = cols
+            self._apply_filter(self._header.search.text())
 
     # ── UI skeleton ───────────────────────────────────────────────────────
 
@@ -731,31 +749,38 @@ class ProjectPage(QWidget):
             self._render_empty(filtered=is_filtered)
             return
 
-        for row_start in range(0, len(projects), _GRID_COLS):
-            chunk = projects[row_start: row_start + _GRID_COLS]
-
-            row_w = QWidget()
-            row_w.setStyleSheet("background: transparent;")
-            row_lay = QHBoxLayout(row_w)
-            row_lay.setContentsMargins(0, 0, 0, 0)
-            row_lay.setSpacing(_CARD_GAP)
-            row_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-            # Leading stretch → centres the card cluster horizontally
-            row_lay.addStretch(1)
-
-            for proj in chunk:
-                row_lay.addWidget(
-                    _ProjectCard(proj, parent_page=self),
-                    alignment=Qt.AlignmentFlag.AlignTop,
-                )
-
-            # Trailing stretch → mirrors the leading stretch
-            row_lay.addStretch(1)
-
-            self._body_lay.addWidget(row_w)
-            self._body_lay.addSpacing(_CARD_GAP)
-
+        # Calculate wrapper width so it perfectly fits the grid
+        grid_w = self._current_cols * _CARD_W + max(0, self._current_cols - 1) * _CARD_GAP
+        
+        grid_container = QWidget()
+        grid_container.setFixedWidth(grid_w)
+        grid_container.setStyleSheet("background: transparent;")
+        
+        gl = QGridLayout(grid_container)
+        gl.setContentsMargins(0, 0, 0, 0)
+        gl.setSpacing(_CARD_GAP)
+        
+        for i, proj in enumerate(projects):
+            row = i // self._current_cols
+            col = i % self._current_cols
+            gl.addWidget(
+                _ProjectCard(proj, parent_page=self), 
+                row, 
+                col, 
+                alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+            )
+            
+        wrapper_w = QWidget()
+        wrapper_w.setStyleSheet("background: transparent;")
+        wrapper_lay = QHBoxLayout(wrapper_w)
+        wrapper_lay.setContentsMargins(0, 0, 0, 0)
+        
+        # Center the grid block horizontally
+        wrapper_lay.addStretch(1)
+        wrapper_lay.addWidget(grid_container, alignment=Qt.AlignmentFlag.AlignTop)
+        wrapper_lay.addStretch(1)
+        
+        self._body_lay.addWidget(wrapper_w)
         self._body_lay.addStretch(1)
 
     def _render_empty(self, filtered: bool = False) -> None:

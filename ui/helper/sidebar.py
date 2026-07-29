@@ -111,6 +111,13 @@ class Sidebar(QFrame):
         # Pin to expanded width (both min & max so layout respects it)
         self.setFixedWidth(self.EXPANDED_W)
 
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(240)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim.valueChanged.connect(
+            lambda v: self.setFixedWidth(int(v))  # type: ignore[arg-type]
+        )
+
         self.setStyleSheet("""
             QFrame#SideBar {
                 background: qlineargradient(
@@ -317,13 +324,9 @@ class Sidebar(QFrame):
 
     def _animate_width(self, target: int) -> None:
         """Smooth width transition using QVariantAnimation (no fixed-width lock needed)."""
-        anim = QVariantAnimation(self)
-        anim.setStartValue(self.width())
-        anim.setEndValue(target)
-        anim.setDuration(240)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim.valueChanged.connect(
-            lambda v: self.setFixedWidth(int(v))  # type: ignore[arg-type]
-        )
-        anim.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
-        self._anim = anim  # keep a reference so GC doesn't destroy it mid-flight
+        if self._anim.state() == QVariantAnimation.State.Running:
+            self._anim.stop()
+            
+        self._anim.setStartValue(self.width())
+        self._anim.setEndValue(target)
+        self._anim.start()

@@ -19,11 +19,11 @@ dependencies = [
 dev = ["pytest>=8.0", "pyinstaller>=6.0"]
 
 [project.scripts]
-trackerx = "trackerx.main:main"
+trackerx = "main:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["trackerx*"]
+include = ["core*", "ui*"]

@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
 
 from .helper.icons import build_orbit_icon
 
-from ..core.models import Habit
-from ..core.services import ProductivityService
+from core.models import Habit
+from core.services import ProductivityService
 from .helper.toolbar import ToolBar
 
 # ─────────────────────────── palette ────────────────────────────────────────

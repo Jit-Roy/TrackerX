@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.models import WeeklyGoalEntry, WeeklyPlan
-from ..core.services import ProductivityService
+from core.models import WeeklyGoalEntry, WeeklyPlan
+from core.services import ProductivityService
 from .helper.icons import build_orbit_icon
 
 

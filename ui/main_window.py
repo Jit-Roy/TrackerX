@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QWidget
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QCloseEvent
 
 from .helper.icons import build_orbit_icon
-from ..core.services import ProductivityService
+from core.services import ProductivityService
 from .recent import TasksPage
 from .habit import HabitPage
 from .planner import PlannerPage
@@ -22,6 +24,20 @@ class MainWindow(QMainWindow):
         self.resize(1520, 960)
         self._build_ui()
         self._wire_services()
+        self._restore_state()
+
+    def _restore_state(self) -> None:
+        settings = QSettings("Jit-Roy", "TrackerX")
+        if settings.contains("geometry"):
+            self.restoreGeometry(settings.value("geometry"))
+        if settings.contains("windowState"):
+            self.restoreState(settings.value("windowState"))
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        settings = QSettings("Jit-Roy", "TrackerX")
+        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowState", self.saveState())
+        super().closeEvent(event)
 
     def _build_ui(self) -> None:
         container = QWidget()

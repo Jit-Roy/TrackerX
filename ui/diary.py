@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.models import DiaryEntry
-from ..core.services import ProductivityService
+from core.models import DiaryEntry
+from core.services import ProductivityService
 
 
 # ── Palette — mirrors app-wide strict B&W/grey scheme ─────────────────────────
@@ -84,6 +84,27 @@ def _trash_icon(color: str = _T_TER) -> QIcon:
     p.drawLine(8, 7, 8, 12)
     p.end()
     return QIcon(pix)
+
+
+class _ElidedLabel(QLabel):
+    """A QLabel that automatically elides (adds ...) its text when it runs out of horizontal space."""
+    def __init__(self, text: str, parent=None) -> None:
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setMinimumWidth(1)
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self._update_elided()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_elided()
+
+    def _update_elided(self) -> None:
+        metrics = self.fontMetrics()
+        elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        super().setText(elided)
 
 
 # ── Sidebar entry item ─────────────────────────────────────────────────────────
@@ -184,15 +205,17 @@ class _EntryItem(QWidget):
             f"letter-spacing: {'1.0' if self.is_today else '0'}px;"
             "background: transparent;"
         )
+        wday.setMinimumWidth(1)
         il.addWidget(wday)
 
-        snip_raw = (snippet or "").strip().split("\n")[0]
-        snip_text = (snip_raw[:42] + "…") if len(snip_raw) > 42 else (snip_raw or "—")
-        snip = QLabel(snip_text)
+        snip_raw = (snippet or "").strip().split("\n")[0] or "—"
+        snip = _ElidedLabel(snip_raw)
         snip.setStyleSheet(
             f"color: {_T_TER}; font-size: 7.5pt; background: transparent;"
         )
         il.addWidget(snip)
+        
+        info.setMinimumWidth(1)
         lay.addWidget(info, 1)
 
     def _restyle(self) -> None:

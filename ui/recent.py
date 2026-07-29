@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QPen
-from PySide6.QtCore import QDate, QEvent, QTimer, QSize, Qt
+from PySide6.QtCore import QDate, QEvent, QSize, QTimer, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -65,8 +65,8 @@ class CircleCheck(QCheckBox):
         painter.end()
 
 
-from ..core.models import Task, TaskStatus
-from ..core.services import ProductivityService
+from core.models import Task, TaskStatus
+from core.services import ProductivityService
 from .helper.toolbar import ToolBar
 
 _TRACKER_BTN_IDLE = """
@@ -144,13 +144,13 @@ class TaskItemWidget(QWidget):
         is_completed = task.status == TaskStatus.COMPLETED
         self.is_completed = is_completed
 
-        # ── Outer centering shell ──────────────────────────────────────────
+        # ── Outer shell: just horizontal padding, card fills full row width ─────
         container_layout = QHBoxLayout(self)
-        container_layout.setContentsMargins(0, 4, 0, 4)
+        container_layout.setContentsMargins(16, 4, 16, 4)
 
         self.inner_widget = QWidget()
         self.inner_widget.setObjectName("taskCard")
-        self.inner_widget.setFixedWidth(820)
+        self.inner_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.inner_widget.setMinimumHeight(64)
 
         if is_completed:
@@ -331,9 +331,7 @@ class TaskItemWidget(QWidget):
 
         layout.addLayout(right_layout)
 
-        container_layout.addStretch(1)
         container_layout.addWidget(self.inner_widget)
-        container_layout.addStretch(1)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Event filter
@@ -602,26 +600,15 @@ _LIST_WIDGET_STYLE = """
 """
 
 
-class OverdueTasksSection(QWidget):
+class OverdueTasksSection:
     """Collapsible section that surfaces tasks whose deadline has passed."""
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent_page=None):
         self.collapsed = False
-        self.parent_page = parent
+        self.parent_page = parent_page
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 0)
-        layout.setSpacing(0)
-
-        # ── Divider above the section ──────────────────────────────────────
-        top_divider = QWidget()
-        top_divider.setFixedHeight(1)
-        top_divider.setStyleSheet("background: rgba(255,255,255,0.07);")
-        layout.addWidget(top_divider)
-
-        # ── Header row ────────────────────────────────────────────────────
-        header_layout = QHBoxLayout()
+        self.header_widget = QWidget()
+        header_layout = QHBoxLayout(self.header_widget)
         header_layout.setContentsMargins(15, 10, 15, 10)
 
         self.collapse_btn = QPushButton()
@@ -656,12 +643,24 @@ class OverdueTasksSection(QWidget):
         header_layout.addWidget(self.count_label)
 
         header_layout.addStretch()
-        layout.addLayout(header_layout)
 
-        # ── Task list ──────────────────────────────────────────────────────
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(_LIST_WIDGET_STYLE)
-        layout.addWidget(self.list_widget, 1)
+        self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def add_to_layout(self, layout):
+        layout.addWidget(self.header_widget)
+        layout.addWidget(self.list_widget, stretch=1)
+
+    def hide(self):
+        self.header_widget.hide()
+        self.list_widget.hide()
+
+    def show(self):
+        self.header_widget.show()
+        if not self.collapsed:
+            self.list_widget.show()
 
     # ── Collapse / expand ──────────────────────────────────────────────────
 
@@ -679,33 +678,25 @@ class OverdueTasksSection(QWidget):
     def populate(self, overdue_tasks: list[Task]) -> None:
         self.list_widget.clear()
         self.count_label.setText(f"({len(overdue_tasks)})")
+        total_height = 0
         for task in overdue_tasks:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, task.id)
             widget = TaskItemWidget(task, parent=self.parent_page, is_overdue=True)
-            item.setSizeHint(widget.sizeHint())
+            item_height = widget.sizeHint().height()
+            item.setSizeHint(QSize(0, item_height))
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
+            total_height += item_height
 
 
-class CompletedTasksSection(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+class CompletedTasksSection:
+    def __init__(self, parent_page=None):
         self.collapsed = False
-        self.parent_page = parent
+        self.parent_page = parent_page
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 0)
-        layout.setSpacing(0)
-
-        # ── Divider above the section ──────────────────────────────────────
-        top_divider = QWidget()
-        top_divider.setFixedHeight(1)
-        top_divider.setStyleSheet("background: rgba(255,255,255,0.07);")
-        layout.addWidget(top_divider)
-
-        # ── Header row ────────────────────────────────────────────────────
-        header_layout = QHBoxLayout()
+        self.header_widget = QWidget()
+        header_layout = QHBoxLayout(self.header_widget)
         header_layout.setContentsMargins(15, 10, 15, 10)
 
         self.collapse_btn = QPushButton()
@@ -740,12 +731,12 @@ class CompletedTasksSection(QWidget):
         header_layout.addWidget(self.count_label)
 
         header_layout.addStretch()
-        layout.addLayout(header_layout)
 
         # ── Task list ──────────────────────────────────────────────────────
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(_LIST_WIDGET_STYLE)
-        layout.addWidget(self.list_widget, 1)
+        self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # ── Archive button ─────────────────────────────────────────────────
         self.archive_btn = QPushButton("✓ Move completed tasks to archive")
@@ -770,7 +761,33 @@ class CompletedTasksSection(QWidget):
             }
         """)
         self.archive_btn.clicked.connect(self._archive_completed)
+
+    def add_to_layout(self, layout):
+        # Divider is now re-added directly above header to match previous behavior
+        top_divider = QWidget()
+        top_divider.setFixedHeight(1)
+        top_divider.setStyleSheet("background: rgba(255,255,255,0.07);")
+        self.top_divider = top_divider
+        
+        layout.addWidget(self.top_divider)
+        layout.addWidget(self.header_widget)
+        layout.addWidget(self.list_widget, stretch=1)
         layout.addWidget(self.archive_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+
+    def hide(self):
+        if hasattr(self, 'top_divider'):
+            self.top_divider.hide()
+        self.header_widget.hide()
+        self.list_widget.hide()
+        self.archive_btn.hide()
+
+    def show(self):
+        if hasattr(self, 'top_divider'):
+            self.top_divider.show()
+        self.header_widget.show()
+        if not self.collapsed:
+            self.list_widget.show()
+            self.archive_btn.show()
 
     def _toggle_collapse(self):
         self.collapsed = not self.collapsed
@@ -790,13 +807,16 @@ class CompletedTasksSection(QWidget):
     def populate(self, completed_tasks: list[Task]) -> None:
         self.list_widget.clear()
         self.count_label.setText(f"({len(completed_tasks)})")
+        total_height = 0
         for task in completed_tasks:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, task.id)
             widget = TaskItemWidget(task, parent=self.parent_page)
-            item.setSizeHint(widget.sizeHint())
+            item_height = widget.sizeHint().height()
+            item.setSizeHint(QSize(0, item_height))
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
+            total_height += item_height
 
 
 class TasksPage(QWidget):
@@ -817,40 +837,43 @@ class TasksPage(QWidget):
         self.toolbar = ToolBar()
         layout.addWidget(self.toolbar)
 
-        # Scroll area for task content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("""
-            QScrollArea {
-                background: transparent;
-                border: none;
-            }
-        """)
-
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
+        # Centered container capped at 960 px — constrains ALL list widgets uniformly
+        content_container = QWidget()
+        content_container.setMaximumWidth(960)
+        content_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        content_layout = QVBoxLayout(content_container)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
         # ── Active task list ───────────────────────────────────────────────
+        self.empty_label = QLabel("No tasks available")
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setStyleSheet("color: rgba(255,255,255,0.5); font-size: 11pt;")
+        content_layout.addWidget(self.empty_label, stretch=1)
+
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(_LIST_WIDGET_STYLE)
-        content_layout.addWidget(self.list_widget, 1)
+        self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content_layout.addWidget(self.list_widget, stretch=1)
 
         # ── Overdue tasks section (hidden until there are overdue tasks) ───
-        self.overdue_section = OverdueTasksSection(parent=self)
+        self.overdue_section = OverdueTasksSection(parent_page=self)
+        self.overdue_section.add_to_layout(content_layout)
         self.overdue_section.hide()
-        content_layout.addWidget(self.overdue_section)
 
         # ── Completed tasks section ────────────────────────────────────────
-        self.completed_section = CompletedTasksSection(parent=self)
+        self.completed_section = CompletedTasksSection(parent_page=self)
+        self.completed_section.add_to_layout(content_layout)
         self.completed_section.hide()
-        content_layout.addWidget(self.completed_section)
 
-        content_layout.addStretch()
-
-        scroll.setWidget(content_widget)
-        layout.addWidget(scroll, 1)
+        # Center the container horizontally
+        center_layout = QHBoxLayout()
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.addStretch(1)
+        center_layout.addWidget(content_container, stretch=4)
+        center_layout.addStretch(1)
+        layout.addLayout(center_layout, stretch=1)
 
         # Connections
         self.toolbar.add_button.clicked.connect(self.add_task)
@@ -902,17 +925,27 @@ class TasksPage(QWidget):
 
         # ── Populate active tasks ──────────────────────────────────────────
         self.list_widget.clear()
+        total_active_height = 0
         for task in active_tasks:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, task.id)
             widget = TaskItemWidget(task, parent=self)
             if task.id in active_task_ids and self.active_tracker_start_times.get(task.id) is not None:
                 widget.resume_tracker(self.active_tracker_start_times[task.id])
-            item.setSizeHint(widget.sizeHint())
+            item_height = widget.sizeHint().height()
+            item.setSizeHint(QSize(0, item_height))
             self.list_widget.addItem(item)
             self.list_widget.setItemWidget(item, widget)
-        if active_tasks and self.list_widget.currentRow() < 0:
-            self.list_widget.setCurrentRow(0)
+            total_active_height += item_height
+        
+        if active_tasks:
+            self.empty_label.hide()
+            self.list_widget.show()
+            if self.list_widget.currentRow() < 0:
+                self.list_widget.setCurrentRow(0)
+        else:
+            self.empty_label.show()
+            self.list_widget.hide()
 
         # ── Populate / hide overdue section ───────────────────────────────
         if overdue_tasks:

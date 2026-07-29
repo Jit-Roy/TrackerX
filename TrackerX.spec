@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['trackerx\\main.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=[('D:\\Personal Projects\\Trackerx\\.venv\\Lib\\site-packages\\PySide6\\plugins', 'PySide6/plugins')],
