@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt, QEvent, QSize
+from PySide6.QtCore import Qt, QEvent, QSize, Signal, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QFontDatabase, QPixmap, QIcon, QPalette
 from PySide6.QtWidgets import (
     QDialog,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QTextEdit,
     QWidget,
+    QToolTip,
 )
 
 from .helper.icons import build_orbit_icon
@@ -25,6 +26,8 @@ from .helper.icons import build_orbit_icon
 from core.models import Habit
 from core.services import ProductivityService
 from .helper.toolbar import ToolBar
+from .helper.drawer import SlideOutDrawer
+from .habit_progress import HabitProgressSection
 
 # ─────────────────────────── palette ────────────────────────────────────────
 _BG         = "#111111"
@@ -102,8 +105,9 @@ class _Dot(QWidget):
             self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def enterEvent(self, _event):
-        self._hovered = True
-        self.update()
+        if self.interactive:
+            self._hovered = True
+            self.update()
 
     def leaveEvent(self, _event):
         self._hovered = False
@@ -249,6 +253,7 @@ class _HabitRow(QWidget):
         lay.addWidget(name_w)
 
         # ── dots ──────────────────────────────────────────────────────────
+        today = date.today()
         for i, active in enumerate(days):
             cell = QWidget()
             cell.setFixedWidth(_COL_W)
@@ -260,7 +265,7 @@ class _HabitRow(QWidget):
                 _Dot(
                     active,
                     is_today=(i == today_col),
-                    interactive=True,
+                    interactive=(day_date <= today),
                     toggle_callback=(
                         lambda active, day=day_date: toggle_callback(day, active)
                         if toggle_callback else None
@@ -290,72 +295,139 @@ class _HabitRow(QWidget):
 #  Form Dialog
 # ─────────────────────────────────────────────────────────────────────────────
 
-class HabitFormDialog(QDialog):
-    def __init__(self, parent=None, habit: Habit | None = None) -> None:
+class HabitFormWidget(QWidget):
+    saved = Signal(Habit)
+    deleted = Signal()
+
+    def __init__(self, parent=None, habit: Habit | None = None, completions: set[date] | None = None) -> None:
         super().__init__(parent)
-        self.setWindowIcon(build_orbit_icon(16))
-        self.setWindowTitle("Habit Details" if habit else "Create Habit")
-        self.resize(500, 200)
         self.original_habit = habit
+        self.completions = completions or set()
         self._build_ui()
         if habit:
             self._load_habit(habit)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; } QWidget#FormCard { background: transparent; }")
         form_card = QWidget()
-        form = QFormLayout(form_card)
+        form_card.setObjectName("FormCard")
+        form_layout = QVBoxLayout(form_card)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(24)
 
+        input_style = """
+            QLineEdit, QTextEdit {
+                background-color: #1a1a1c;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 6px;
+                padding: 10px;
+                color: #ffffff;
+                font-size: 10pt;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+        """
+
+        label_style = "color: #e8e8ed; font-size: 9.5pt; font-weight: 500;"
+
+        # ── Title ──
+        title_container = QWidget()
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(8)
+        lbl_title = QLabel("Title")
+        lbl_title.setStyleSheet(label_style)
         self.title = QLineEdit()
+        self.title.setPlaceholderText("Enter habit title")
+        self.title.setStyleSheet(input_style)
+        title_layout.addWidget(lbl_title)
+        title_layout.addWidget(self.title)
+
+        # ── Description ──
+        desc_container = QWidget()
+        desc_layout = QVBoxLayout(desc_container)
+        desc_layout.setContentsMargins(0, 0, 0, 0)
+        desc_layout.setSpacing(8)
+        lbl_desc = QLabel("Description")
+        lbl_desc.setStyleSheet(label_style)
         self.description = QTextEdit()
-        self.description.setMaximumHeight(80)
+        self.description.setPlaceholderText("Enter habit description")
+        self.description.setFixedHeight(120)
+        self.description.setStyleSheet(input_style)
+        desc_layout.addWidget(lbl_desc)
+        desc_layout.addWidget(self.description)
 
-        form.addRow("Title", self.title)
-        form.addRow("Description", self.description)
+        form_layout.addWidget(title_container)
+        form_layout.addWidget(desc_container)
         
-        # Action buttons row aligned to the right, at the top of the dialog
-        actions_container = QWidget()
-        actions_layout = QHBoxLayout(actions_container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.addStretch(1)
-
-        self.save_btn = QPushButton()
-        self.save_btn.setIcon(self._create_icon("save"))
-        self.save_btn.setToolTip("Save")
-        self.save_btn.setIconSize(QSize(20, 20))
-        self.save_btn.setFixedSize(36, 36)
-        self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.save_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; color: #ffffff; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.08); border-radius: 10px; }"
-        )
-        self.save_btn.clicked.connect(self.accept)
-        actions_layout.addWidget(self.save_btn)
-
+        # ── Progress Section ──
         if self.original_habit:
-            self.delete_btn = QPushButton()
-            self.delete_btn.setIcon(self._create_icon("delete"))
-            self.delete_btn.setToolTip("Delete")
-            self.delete_btn.setIconSize(QSize(20, 20))
-            self.delete_btn.setFixedSize(36, 36)
-            self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.delete_btn.setStyleSheet(
-                "QPushButton { background: transparent; border: none; color: #ffffff; }"
-                "QPushButton:hover { background: rgba(255,255,255,0.08); border-radius: 10px; }"
-            )
-            self.delete_btn.clicked.connect(self.on_delete_clicked)
-            actions_layout.addWidget(self.delete_btn)
+            progress_section = HabitProgressSection(self.original_habit, self.completions, self)
+            form_layout.addWidget(progress_section)
+
+        form_layout.addStretch(1)
 
         scroll.setWidget(form_card)
         layout.addWidget(scroll)
+
+        # ── Action Buttons ──
+        actions_container = QWidget()
+        actions_layout = QHBoxLayout(actions_container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(12)
+
+        btn_text = "Save Habit" if self.original_habit else "Create Habit"
+        self.save_btn = QPushButton(btn_text)
+        self.save_btn.setFixedHeight(40)
+        self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #232325;
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                font-weight: 500;
+                font-size: 9.5pt;
+            }
+            QPushButton:hover {
+                background-color: #2a2a2c;
+            }
+        """)
+        self.save_btn.clicked.connect(lambda: self.saved.emit(self.get_habit_data()))
+        self.title.returnPressed.connect(self.save_btn.click)
+        actions_layout.addWidget(self.save_btn, 1)
+
+        if self.original_habit:
+            self.delete_btn = QPushButton("Delete")
+            self.delete_btn.setFixedHeight(40)
+            self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.delete_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #251010;
+                    color: #ff6b6b;
+                    border: 1px solid rgba(255, 107, 107, 0.1);
+                    border-radius: 8px;
+                    font-weight: 500;
+                    font-size: 9.5pt;
+                    padding: 0 16px;
+                }
+                QPushButton:hover {
+                    background-color: #351515;
+                }
+            """)
+            self.delete_btn.clicked.connect(self.on_delete_clicked)
+            actions_layout.addWidget(self.delete_btn)
+
         layout.addWidget(actions_container)
     
     def on_delete_clicked(self) -> None:
-        self.delete_confirmed = True
-        self.accept()
+        self.deleted.emit()
 
     def _create_icon(self, kind: str) -> QIcon:
         pix = QPixmap(24, 24)
@@ -422,10 +494,13 @@ class HabitPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Toolbar stays at top
-        self.toolbar = ToolBar(self)
-        self.toolbar.add_button.clicked.connect(self.add_habit)
-        root.addWidget(self.toolbar)
+        # Toolbar is now inside _root layout so it slides with the content
+        
+        # Horizontal layout for body + drawer
+        h_body_container = QWidget()
+        h_body_layout = QHBoxLayout(h_body_container)
+        h_body_layout.setContentsMargins(0, 0, 0, 0)
+        h_body_layout.setSpacing(0)
         
         # Container for renderable content (nav + scroll area)
         self._content_container = QWidget()
@@ -435,8 +510,18 @@ class HabitPage(QWidget):
         self._root = QVBoxLayout(self._content_container)
         self._root.setContentsMargins(0, 0, 0, 0)
         self._root.setSpacing(0)
-        root.addWidget(self._content_container, 1)
         
+        # Toolbar stays at top of content container
+        self.toolbar = ToolBar(self)
+        self.toolbar.add_button.clicked.connect(self.add_habit)
+        self._root.addWidget(self.toolbar)
+        
+        h_body_layout.addWidget(self._content_container, 1)
+        
+        self.drawer = SlideOutDrawer(width=380, parent=self)
+        h_body_layout.addWidget(self.drawer)
+        
+        root.addWidget(h_body_container, 1)
         self._render()
 
     def refresh(self) -> None:
@@ -475,8 +560,8 @@ class HabitPage(QWidget):
         self.setUpdatesEnabled(False)
         if hasattr(self, '_content_container') and self._content_container:
             self._content_container.setUpdatesEnabled(False)
-        while self._root.count():
-            item = self._root.takeAt(0)
+        while self._root.count() > 1:
+            item = self._root.takeAt(1)
             if w := item.widget():
                 w.deleteLater()
 
@@ -517,10 +602,13 @@ class HabitPage(QWidget):
 
         nl.addSpacing(28)
 
+        is_current_week = today_i != -1
+        today_color = _T_PRI if is_current_week else _T_SEC
+
         today_btn = QPushButton("Today")
         today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         today_btn.setStyleSheet(
-            f"QPushButton {{ color: {_T_SEC}; background-color: transparent; border: none; "
+            f"QPushButton {{ color: {today_color}; background-color: transparent; border: none; "
             f"font-size: 9.5pt; padding: 0; }} "
             f"QPushButton:hover {{ color: {_T_PRI}; }}"
         )
@@ -530,11 +618,11 @@ class HabitPage(QWidget):
         nl.addStretch(1)
 
         self._root.addWidget(nav)
-        self._root.addWidget(_HDiv())
 
         # ── scrollable body ───────────────────────────────────────────────
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
             f"QScrollArea {{ background: {_BG}; border: none; }}"
             f"QScrollArea > QWidget {{ background: transparent; }}"
@@ -624,11 +712,16 @@ class HabitPage(QWidget):
 
     def add_habit(self) -> None:
         """Add a new habit. Called by toolbar button."""
-        dialog = HabitFormDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            habit_data = dialog.get_habit_data()
-            self.service.create_habit(habit_data)
-            self.refresh()
+        form = HabitFormWidget(self)
+        form.saved.connect(self._on_habit_added)
+        self.drawer.set_title("Create Habit")
+        self.drawer.set_content(form)
+        self.drawer.open_drawer()
+
+    def _on_habit_added(self, habit: Habit) -> None:
+        self.drawer.close_drawer()
+        self.service.create_habit(habit)
+        self.refresh()
 
     def edit_habit(self, habit_id: int | None = None) -> None:
         """Edit an existing habit. Called by double-click."""
@@ -637,14 +730,25 @@ class HabitPage(QWidget):
         habit = self.service.habits.get(habit_id)
         if not habit:
             return
-        dialog = HabitFormDialog(self, habit)
-        if dialog.exec() == QDialog.Accepted:
-            if dialog.is_delete_requested():
-                self.delete_habit(habit_id)
-            else:
-                updated_habit = dialog.get_habit_data()
-                self.service.update_habit(habit_id, updated_habit)
-                self.refresh()
+        today = date.today()
+        completions = self.service.habits.get_completions(habit_id, today - timedelta(days=365), today)
+        
+        form = HabitFormWidget(self, habit, completions=completions)
+        form.saved.connect(lambda h: self._on_habit_edited(habit_id, h))
+        form.deleted.connect(lambda: self._on_habit_deleted(habit_id))
+        
+        self.drawer.set_title("Edit Habit")
+        self.drawer.set_content(form)
+        self.drawer.open_drawer()
+
+    def _on_habit_edited(self, habit_id: int, habit: Habit) -> None:
+        self.drawer.close_drawer()
+        self.service.update_habit(habit_id, habit)
+        self.refresh()
+
+    def _on_habit_deleted(self, habit_id: int) -> None:
+        self.drawer.close_drawer()
+        self.delete_habit(habit_id)
 
     def delete_habit(self, habit_id: int) -> None:
         """Delete a habit."""

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QEvent, QSize
+from PySide6.QtCore import Qt, QEvent, QSize, Signal, QTimer
 from PySide6.QtGui import (
     QPainter, QColor, QPen, QFont,
     QPixmap, QIcon, QFontMetrics,
@@ -20,12 +20,15 @@ from PySide6.QtWidgets import (
     QWidget,
     QFrame,
     QGridLayout,
+    QToolButton,
 )
 
 from core.models import Project, ProjectIdea
 from core.services import ProductivityService
 from .helper.icons import build_orbit_icon
 from .helper.toolbar import ToolBar
+from .helper.drawer import SlideOutDrawer
+from .helper.flow_layout import FlowLayout
 
 
 # ── Strict B&W / Grey Palette ──────────────────────────────────────────────────
@@ -94,6 +97,33 @@ def _make_avatar(letter: str, size: int = 28) -> QPixmap:
     p.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, letter.upper()[:1])
     p.end()
     return pix
+
+
+class _ElidedLabel(QLabel):
+    """A label that gracefully elides its text with an ellipsis if it exceeds the width."""
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._full_text = text
+        # Ignore size policy so it can shrink below the text's natural width
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(1)
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self._update_elided()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_elided()
+
+    def _update_elided(self) -> None:
+        metrics = QFontMetrics(self.font())
+        elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        super().setText(elided)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(1, super().minimumSizeHint().height())
+
 
 
 # ── Page header strip ──────────────────────────────────────────────────────────
@@ -305,7 +335,8 @@ class _ProjectCard(QWidget):
         av.setFixedSize(24, 24)
         hrow.addWidget(av)
 
-        title_lbl = QLabel(self.project.title)
+        title_lbl = _ElidedLabel(self.project.title)
+        title_lbl.setToolTip(self.project.title)
         title_lbl.setStyleSheet(
             f"color: {_T_PRI};"
             f"font-size: 9.5pt; font-weight: 600;"
@@ -320,7 +351,7 @@ class _ProjectCard(QWidget):
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             badge.setFixedSize(18, 14)
             badge.setStyleSheet(
-                f"background: {_BADGE_BG};"
+                f"background: transparent;"
                 f"color: {_T_PRI};"
                 f"font-size: 7pt; font-weight: 600;"
                 f"border: 1px solid {_BORDER_MID};"
@@ -328,28 +359,7 @@ class _ProjectCard(QWidget):
             )
             hrow.addWidget(badge)
 
-        # ⋯ edit button
-        edit_btn = QPushButton("···")
-        edit_btn.setFixedSize(22, 20)
-        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        edit_btn.setToolTip("Edit project")
-        edit_btn.setStyleSheet(
-            f"QPushButton {{"
-            f"  background: transparent; border: none;"
-            f"  color: {_T_SEC}; padding: 0; font-size: 9pt; letter-spacing: 1px;"
-            f"}}"
-            f"QPushButton:hover {{"
-            f"  color: {_T_PRI};"
-            f"  background: rgba(255,255,255,0.08);"
-            f"  border-radius: 5px;"
-            f"}}"
-            f"QPushButton:pressed {{"
-            f"  color: {_T_PRI};"
-            f"  background: rgba(255,255,255,0.14);"
-            f"}}"
-        )
-        edit_btn.clicked.connect(self._edit_project)
-        hrow.addWidget(edit_btn)
+
         cl.addLayout(hrow)
 
         # ── Description ────────────────────────────────────────────────────
@@ -384,6 +394,29 @@ class _ProjectCard(QWidget):
 
         for idea in (self.project.ideas or []):
             self.ideas_lay.addWidget(_IdeaRow(idea, parent_card=self))
+            
+        # ── Idea capture input (inline, hidden until activated) ───────────
+        self.idea_input = QLineEdit()
+        self.idea_input.setPlaceholderText("New idea…")
+        self.idea_input.setFixedHeight(22)
+        self.idea_input.setStyleSheet(
+            f"QLineEdit {{"
+            f"  background: transparent;"
+            f"  color: {_T_PRI};"
+            f"  border: 1px solid {_BORDER_MID};"
+            f"  border-radius: 6px;"
+            f"  padding: 0 9px;"
+            f"  font-size: 8.5pt;"
+            f"}}"
+            f"QLineEdit:focus {{"
+            f"  border-color: {_BORDER_HOV};"
+            f"}}"
+        )
+        self.idea_input.returnPressed.connect(self._commit_idea)
+        self.idea_input.installEventFilter(self)
+        self.idea_input.setVisible(False)
+        self.ideas_lay.addWidget(self.idea_input)
+
         self.ideas_lay.addStretch(1)
 
         self.ideas_scroll = QScrollArea()
@@ -409,27 +442,7 @@ class _ProjectCard(QWidget):
         self.ideas_scroll.setWidget(self.ideas_box)
         cl.addWidget(self.ideas_scroll, 1)
 
-        # ── Idea capture input (hidden until activated) ─────────────────────
-        self.idea_input = QLineEdit()
-        self.idea_input.setPlaceholderText("New idea…   ↵ save   Esc cancel")
-        self.idea_input.setFixedHeight(22)
-        self.idea_input.setStyleSheet(
-            f"QLineEdit {{"
-            f"  background: {_SURFACE_IN};"
-            f"  color: {_T_PRI};"
-            f"  border: 1px solid {_BORDER_MID};"
-            f"  border-radius: 6px;"
-            f"  padding: 0 9px;"
-            f"  font-size: 8.5pt;"
-            f"}}"
-            f"QLineEdit:focus {{"
-            f"  border-color: {_BORDER_HOV};"
-            f"}}"
-        )
-        self.idea_input.returnPressed.connect(self._commit_idea)
-        self.idea_input.installEventFilter(self)
-        self.idea_input.setVisible(False)
-        cl.addWidget(self.idea_input)
+
 
         # ── Spacer between input area and + button ─────────────────────────
         cl.addSpacing(4)
@@ -454,7 +467,6 @@ class _ProjectCard(QWidget):
     # ── Idea input helpers ─────────────────────────────────────────────────
 
     def _show_idea_input(self) -> None:
-        self.add_btn.setVisible(False)
         self.idea_input.setVisible(True)
         self.idea_input.clear()
         self.idea_input.setFocus()
@@ -462,7 +474,6 @@ class _ProjectCard(QWidget):
     def _hide_idea_input(self) -> None:
         self.idea_input.setVisible(False)
         self.idea_input.clear()
-        self.add_btn.setVisible(True)
 
     def _commit_idea(self) -> None:
         text = self.idea_input.text().strip()
@@ -490,6 +501,8 @@ class _ProjectCard(QWidget):
                 self.card.setStyleSheet(self._HOVER_SS)
             elif t == QEvent.Type.Leave:
                 self.card.setStyleSheet(self._NORMAL_SS)
+            elif t == QEvent.Type.MouseButtonDblClick:
+                self._edit_project()
         elif obj is self.idea_input:
             if (
                 event.type() == QEvent.Type.KeyPress
@@ -497,21 +510,22 @@ class _ProjectCard(QWidget):
             ):
                 self._hide_idea_input()
                 return True
+            elif event.type() == QEvent.Type.FocusOut:
+                self._commit_idea()
         return super().eventFilter(obj, event)
 
 
 # ── Project form dialog ────────────────────────────────────────────────────────
 
-class ProjectFormDialog(QDialog):
+class ProjectFormWidget(QWidget):
     """Create or edit a project.  Strict B&W/grey aesthetic."""
+    saved = Signal(str, str)
+    deleted = Signal()
+    cancelled = Signal()
 
     def __init__(self, parent=None, project: Project | None = None) -> None:
         super().__init__(parent)
-        self.setWindowIcon(build_orbit_icon(16))
-        self.setWindowTitle("Edit Project" if project else "New Project")
-        self.resize(440, 240)
         self.original = project
-        self.delete_requested = False
         self._apply_styles()
         self._build()
         if project:
@@ -520,124 +534,128 @@ class ProjectFormDialog(QDialog):
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(f"""
-            QDialog {{
-                background: #0e0e0e;
-                color: {_T_PRI};
-            }}
-            QLabel {{
-                color: {_T_SEC};
-                font-size: 8.5pt;
+            QWidget#FormCard {{
                 background: transparent;
             }}
-            QLineEdit, QTextEdit {{
-                background: {_SURFACE_IN};
-                color: {_T_PRI};
-                border: 1px solid {_BORDER_MID};
-                border-radius: 7px;
-                padding: 6px 10px;
-                font-size: 9.5pt;
-                selection-background-color: #3a3a3a;
-            }}
-            QLineEdit:focus, QTextEdit:focus {{
-                border-color: {_BORDER_HOV};
+            QLabel {{
+                background: transparent;
             }}
         """)
 
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(28, 24, 28, 20)
-        lay.setSpacing(18)
+        lay.setContentsMargins(0, 0, 0, 0)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        form_card = QWidget()
+        form_card.setObjectName("FormCard")
+        form_layout = QVBoxLayout(form_card)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(24)
 
-        # Heading
-        heading = QLabel("Edit project" if self.original else "New project")
-        heading.setStyleSheet(
-            f"color: {_T_PRI}; font-size: 13pt; font-weight: 700;"
-            f"background: transparent; letter-spacing: -0.3px;"
-        )
-        lay.addWidget(heading)
+        input_style = """
+            QLineEdit, QTextEdit {
+                background-color: #1a1a1c;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 6px;
+                padding: 10px;
+                color: #ffffff;
+                font-size: 10pt;
+            }
+            QLineEdit:focus, QTextEdit:focus {
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+        """
 
-        # Form
-        form = QFormLayout()
-        form.setSpacing(10)
-        form.setHorizontalSpacing(18)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        label_style = "color: #e8e8ed; font-size: 9.5pt; font-weight: 500;"
 
+        # ── Title ──
+        title_container = QWidget()
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(8)
+        lbl_title = QLabel("Name")
+        lbl_title.setStyleSheet(label_style)
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("Project name")
-        self.title_edit.setFixedHeight(32)
-        self.title_edit.returnPressed.connect(self.accept)
-        form.addRow(QLabel("Name"), self.title_edit)
+        self.title_edit.setStyleSheet(input_style)
+        title_layout.addWidget(lbl_title)
+        title_layout.addWidget(self.title_edit)
 
+        # ── Description ──
+        desc_container = QWidget()
+        desc_layout = QVBoxLayout(desc_container)
+        desc_layout.setContentsMargins(0, 0, 0, 0)
+        desc_layout.setSpacing(8)
+        lbl_desc = QLabel("About")
+        lbl_desc.setStyleSheet(label_style)
         self.desc_edit = QTextEdit()
-        self.desc_edit.setPlaceholderText("Short description  (optional)")
-        self.desc_edit.setFixedHeight(66)
-        form.addRow(QLabel("About"), self.desc_edit)
-        lay.addLayout(form)
+        self.desc_edit.setPlaceholderText("Short description (optional)")
+        self.desc_edit.setMaximumHeight(120)
+        self.desc_edit.setStyleSheet(input_style)
+        desc_layout.addWidget(lbl_desc)
+        desc_layout.addWidget(self.desc_edit)
 
-        # Action row
+        form_layout.addWidget(title_container)
+        form_layout.addWidget(desc_container)
+        form_layout.addStretch(1)
+
+        scroll.setWidget(form_card)
+        lay.addWidget(scroll)
+
+        # ── Action Buttons ──
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(12)
+
+        save_btn = QPushButton("Save Project" if self.original else "Create Project")
+        save_btn.setFixedHeight(44)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2c;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                font-weight: 500;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #353538;
+            }
+        """)
+        save_btn.clicked.connect(lambda: self.saved.emit(*self.get_data()))
+        self.title_edit.returnPressed.connect(save_btn.click)
+        btn_row.addWidget(save_btn, 1)
 
         if self.original:
             del_btn = QPushButton("Delete")
-            del_btn.setFixedHeight(30)
+            del_btn.setFixedHeight(44)
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            del_btn.setStyleSheet(
-                f"QPushButton {{"
-                f"  background: transparent;"
-                f"  border: 1px solid {_BORDER_MID};"
-                f"  color: {_T_DIM};"
-                f"  border-radius: 7px;"
-                f"  padding: 0 16px; font-size: 8.5pt;"
-                f"}}"
-                f"QPushButton:hover {{"
-                f"  border-color: #4a2020;"
-                f"  color: #8a4040;"
-                f"}}"
-            )
+            del_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3a1a1c;
+                    color: #ff6b6b;
+                    border: none;
+                    border-radius: 6px;
+                    font-weight: 500;
+                    font-size: 10pt;
+                }
+                QPushButton:hover {
+                    background-color: #4a2a2c;
+                }
+            """)
             del_btn.clicked.connect(self._on_delete)
             btn_row.addWidget(del_btn)
 
-        btn_row.addStretch(1)
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setFixedHeight(30)
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cancel_btn.setStyleSheet(
-            f"QPushButton {{"
-            f"  background: transparent;"
-            f"  border: 1px solid {_BORDER_MID};"
-            f"  color: {_T_SEC};"
-            f"  border-radius: 7px;"
-            f"  padding: 0 18px; font-size: 8.5pt;"
-            f"}}"
-            f"QPushButton:hover {{"
-            f"  border-color: {_BORDER_HOV};"
-            f"  color: {_T_PRI};"
-            f"}}"
-        )
-        cancel_btn.clicked.connect(self.reject)
-        btn_row.addWidget(cancel_btn)
-
-        save_btn = QPushButton("Save")
-        save_btn.setFixedHeight(30)
-        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        save_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: #e8e8e8; color: #0a0a0a;"
-            "  border: none; border-radius: 7px;"
-            "  padding: 0 24px; font-weight: 700; font-size: 8.5pt;"
-            "}"
-            "QPushButton:hover { background: #ffffff; }"
-            "QPushButton:pressed { background: #d0d0d0; }"
-        )
-        save_btn.clicked.connect(self.accept)
-        btn_row.addWidget(save_btn)
         lay.addLayout(btn_row)
 
     def _on_delete(self) -> None:
-        self.delete_requested = True
-        self.accept()
+        self.deleted.emit()
 
     def get_data(self) -> tuple[str, str]:
         return (
@@ -660,47 +678,51 @@ class ProjectPage(QWidget):
         super().__init__()
         self.service = service
         self._all_projects: list[Project] = []
-        self._current_cols = 4
         self.setStyleSheet(f"background: {_BG};")
         self._build_ui()
+        self.drawer = SlideOutDrawer(width=380, parent=self)
+        self._build_ui_layout()
         self.refresh()
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        
-        # Use event.size().width() because self._scroll.viewport() hasn't been 
-        # resized by the layout engine yet when this event first fires!
-        page_w = event.size().width()
-        margins = 72  # 36 left + 36 right
-        scrollbar_allowance = 20
-        available = page_w - margins - scrollbar_allowance
-        
-        cols = max(1, (available + _CARD_GAP) // (_CARD_W + _CARD_GAP))
-        
-        if cols != self._current_cols:
-            self._current_cols = cols
-            self._apply_filter(self._header.search.text())
 
     # ── UI skeleton ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        pass # Called just to prep before drawer init if needed
+
+    def _build_ui_layout(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        # Toolbar is now inside body_layout so it slides with the content
+
+        # Horizontal layout for body + drawer
+        h_body_container = QWidget()
+        h_body_layout = QHBoxLayout(h_body_container)
+        h_body_layout.setContentsMargins(0, 0, 0, 0)
+        h_body_layout.setSpacing(0)
+
+        # Body container
+        self.body_widget = QWidget()
+        self.body_widget.installEventFilter(self)
+        body_layout = QVBoxLayout(self.body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
         # Shared toolbar
         self.toolbar = ToolBar(self)
         self.toolbar.add_button.clicked.connect(self.add_project)
-        root.addWidget(self.toolbar)
+        body_layout.addWidget(self.toolbar)
 
         # Header (stats + search only — no title, no divider)
         self._header = _HeaderStrip(self)
         self._header.search.textChanged.connect(self._apply_filter)
-        root.addWidget(self._header)
+        body_layout.addWidget(self._header)
 
         # Scrollable grid
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setStyleSheet(
             f"QScrollArea {{ background: {_BG}; border: none; }}"
             "QScrollBar:vertical { width: 5px; background: transparent; margin: 0; }"
@@ -717,7 +739,12 @@ class ProjectPage(QWidget):
         self._body_lay.setSpacing(0)
 
         self._scroll.setWidget(self._body)
-        root.addWidget(self._scroll, 1)
+        body_layout.addWidget(self._scroll, 1)
+
+        h_body_layout.addWidget(self.body_widget, stretch=1)
+        h_body_layout.addWidget(self.drawer)
+        
+        root.addWidget(h_body_container, stretch=1)
 
     # ── Refresh / render ──────────────────────────────────────────────────
 
@@ -749,38 +776,18 @@ class ProjectPage(QWidget):
             self._render_empty(filtered=is_filtered)
             return
 
-        # Calculate wrapper width so it perfectly fits the grid
-        grid_w = self._current_cols * _CARD_W + max(0, self._current_cols - 1) * _CARD_GAP
+        # Create a container for the flow layout
+        flow_container = QWidget()
+        flow_container.setStyleSheet("background: transparent;")
         
-        grid_container = QWidget()
-        grid_container.setFixedWidth(grid_w)
-        grid_container.setStyleSheet("background: transparent;")
+        # We configure the flow layout with no external margins, and spacing defined by _CARD_GAP
+        flow_lay = FlowLayout(flow_container, margin=0, spacing=_CARD_GAP)
         
-        gl = QGridLayout(grid_container)
-        gl.setContentsMargins(0, 0, 0, 0)
-        gl.setSpacing(_CARD_GAP)
-        
-        for i, proj in enumerate(projects):
-            row = i // self._current_cols
-            col = i % self._current_cols
-            gl.addWidget(
-                _ProjectCard(proj, parent_page=self), 
-                row, 
-                col, 
-                alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
-            )
+        for proj in projects:
+            card = _ProjectCard(proj, parent_page=self)
+            flow_lay.addWidget(card)
             
-        wrapper_w = QWidget()
-        wrapper_w.setStyleSheet("background: transparent;")
-        wrapper_lay = QHBoxLayout(wrapper_w)
-        wrapper_lay.setContentsMargins(0, 0, 0, 0)
-        
-        # Center the grid block horizontally
-        wrapper_lay.addStretch(1)
-        wrapper_lay.addWidget(grid_container, alignment=Qt.AlignmentFlag.AlignTop)
-        wrapper_lay.addStretch(1)
-        
-        self._body_lay.addWidget(wrapper_w)
+        self._body_lay.addWidget(flow_container)
         self._body_lay.addStretch(1)
 
     def _render_empty(self, filtered: bool = False) -> None:
@@ -823,13 +830,19 @@ class ProjectPage(QWidget):
     # ── Project CRUD ──────────────────────────────────────────────────────
 
     def add_project(self) -> None:
-        dlg = ProjectFormDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            title, desc = dlg.get_data()
-            self.service.create_project(
-                Project(id=None, title=title, description=desc)
-            )
-            self.refresh()
+        form = ProjectFormWidget(self)
+        self.drawer.set_title("New Project")
+        self.drawer.set_content(form)
+        form.cancelled.connect(self.drawer.close_drawer)
+        form.saved.connect(self._on_project_added)
+        self.drawer.open_drawer()
+
+    def _on_project_added(self, title: str, desc: str) -> None:
+        self.drawer.close_drawer()
+        self.service.create_project(
+            Project(id=None, title=title, description=desc)
+        )
+        self.refresh()
 
     def edit_project(self, project_id: int | None) -> None:
         if project_id is None:
@@ -837,16 +850,28 @@ class ProjectPage(QWidget):
         proj = self.service.get_project(project_id)
         if not proj:
             return
-        dlg = ProjectFormDialog(self, proj)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            if dlg.delete_requested:
-                self.service.delete_project(project_id)
-            else:
-                title, desc = dlg.get_data()
-                proj.title = title
-                proj.description = desc
-                self.service.update_project(project_id, proj)
-            self.refresh()
+        
+        form = ProjectFormWidget(self, proj)
+        self.drawer.set_title("Edit Project")
+        self.drawer.set_content(form)
+        
+        form.cancelled.connect(self.drawer.close_drawer)
+        form.deleted.connect(lambda: self._on_project_deleted(project_id))
+        form.saved.connect(lambda title, desc: self._on_project_edited(project_id, proj, title, desc))
+        
+        self.drawer.open_drawer()
+
+    def _on_project_deleted(self, project_id: int) -> None:
+        self.drawer.close_drawer()
+        self.service.delete_project(project_id)
+        self.refresh()
+
+    def _on_project_edited(self, project_id: int, proj: Project, title: str, desc: str) -> None:
+        self.drawer.close_drawer()
+        proj.title = title
+        proj.description = desc
+        self.service.update_project(project_id, proj)
+        self.refresh()
 
     # ── Idea CRUD ─────────────────────────────────────────────────────────
 

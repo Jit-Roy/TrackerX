@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QPen
-from PySide6.QtCore import QDate, QEvent, QSize, QTimer, Qt
+from PySide6.QtCore import QDate, QEvent, QSize, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtSvg import QSvgRenderer
 
 from .helper.icons import build_orbit_icon
+from .helper.drawer import SlideOutDrawer
 
 
 class CircleCheck(QCheckBox):
@@ -233,6 +234,14 @@ class TaskItemWidget(QWidget):
                 "background: transparent; letter-spacing: 0.1px;"
             )
         text_layout.addWidget(title)
+
+        desc_text = task.description if task.description and task.description.strip() else "No description"
+        desc_label = QLabel(desc_text)
+        if is_completed:
+            desc_label.setStyleSheet("color: #484848; font-size: 8.5pt; background: transparent;")
+        else:
+            desc_label.setStyleSheet("color: #707075; font-size: 8.5pt; background: transparent;")
+        text_layout.addWidget(desc_label)
 
         # Badge is always created but only shown while tracker is actively running.
         self.progress_badge = QLabel("● Tracking")
@@ -483,12 +492,11 @@ class TaskItemWidget(QWidget):
         self.tracker_timer.start()
 
 
-class TaskFormDialog(QDialog):
+class TaskFormWidget(QWidget):
+    saved = Signal(Task)
+
     def __init__(self, parent=None, task: Task | None = None) -> None:
         super().__init__(parent)
-        self.setWindowIcon(build_orbit_icon(16))
-        self.setWindowTitle("Task Details" if task else "Create Task")
-        self.resize(500, 300)
         self.original_task = task
         self._build_ui()
         if task:
@@ -496,45 +504,102 @@ class TaskFormDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-
+        layout.setContentsMargins(0, 0, 0, 0)
+        
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; } QWidget#FormCard { background: transparent; }")
         form_card = QWidget()
-        form = QFormLayout(form_card)
+        form_card.setObjectName("FormCard")
+        form_layout = QVBoxLayout(form_card)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(24)
 
+        input_style = """
+            QLineEdit, QTextEdit, QDateEdit {
+                background-color: #1a1a1c;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 6px;
+                padding: 10px;
+                color: #ffffff;
+                font-size: 10pt;
+            }
+            QLineEdit:focus, QTextEdit:focus, QDateEdit:focus {
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+        """
+
+        label_style = "color: #e8e8ed; font-size: 9.5pt; font-weight: 500;"
+
+        # ── Title ──
+        title_container = QWidget()
+        title_layout = QVBoxLayout(title_container)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(8)
+        lbl_title = QLabel("Title")
+        lbl_title.setStyleSheet(label_style)
         self.title = QLineEdit()
+        self.title.setPlaceholderText("Enter task title")
+        self.title.setStyleSheet(input_style)
+        title_layout.addWidget(lbl_title)
+        title_layout.addWidget(self.title)
+
+        # ── Description ──
+        desc_container = QWidget()
+        desc_layout = QVBoxLayout(desc_container)
+        desc_layout.setContentsMargins(0, 0, 0, 0)
+        desc_layout.setSpacing(8)
+        lbl_desc = QLabel("Description")
+        lbl_desc.setStyleSheet(label_style)
         self.description = QTextEdit()
-        self.description.setMaximumHeight(80)
+        self.description.setPlaceholderText("Enter task description")
+        self.description.setMaximumHeight(120)
+        self.description.setStyleSheet(input_style)
+        desc_layout.addWidget(lbl_desc)
+        desc_layout.addWidget(self.description)
+
+        # ── Due Date ──
+        due_container = QWidget()
+        due_layout = QVBoxLayout(due_container)
+        due_layout.setContentsMargins(0, 0, 0, 0)
+        due_layout.setSpacing(8)
         self.due_enabled = QCheckBox("Has due date")
+        self.due_enabled.setStyleSheet("color: #e8e8ed; font-size: 9.5pt;")
         self.due_date = QDateEdit(QDate.currentDate())
         self.due_date.setCalendarPopup(True)
+        self.due_date.setStyleSheet(input_style + " QDateEdit::drop-down { border: none; width: 30px; }")
+        due_layout.addWidget(self.due_enabled)
+        due_layout.addWidget(self.due_date)
 
-        form.addRow("Title", self.title)
-        form.addRow("Description", self.description)
-        form.addRow(self.due_enabled, self.due_date)
+        form_layout.addWidget(title_container)
+        form_layout.addWidget(desc_container)
+        form_layout.addWidget(due_container)
+        form_layout.addStretch(1)
 
         scroll.setWidget(form_card)
         layout.addWidget(scroll)
 
-        # Action buttons row aligned to the right, icon-only save button
-        actions_container = QWidget()
-        actions_layout = QHBoxLayout(actions_container)
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.addStretch(1)
-
-        self.save_btn = QPushButton()
-        self.save_btn.setIcon(self._create_icon("save"))
-        self.save_btn.setToolTip("Save")
-        self.save_btn.setIconSize(QSize(20, 20))
-        self.save_btn.setFixedSize(36, 36)
+        # ── Action Button ──
+        btn_text = "Save Task" if self.original_task else "Create Task"
+        self.save_btn = QPushButton(btn_text)
+        self.save_btn.setFixedHeight(44)
         self.save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.save_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; color: #ffffff; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.08); border-radius: 10px; }"
-        )
-        self.save_btn.clicked.connect(self.accept)
-        actions_layout.addWidget(self.save_btn)
-        layout.addWidget(actions_container)
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2c;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                font-weight: 500;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #353538;
+            }
+        """)
+        self.save_btn.clicked.connect(lambda: self.saved.emit(self.get_task_data()))
+        self.title.returnPressed.connect(self.save_btn.click)
+        layout.addWidget(self.save_btn)
 
     def _load_task(self, task: Task) -> None:
         self.title.setText(task.title)
@@ -827,12 +892,28 @@ class TasksPage(QWidget):
         # support multiple concurrent trackers: map task_id -> widget and start time
         self.active_tracker_widgets: dict[int, TaskItemWidget] = {}
         self.active_tracker_start_times: dict[int, datetime] = {}
+        self.drawer = SlideOutDrawer(width=380, parent=self)
         self._build_ui()
         self.refresh()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
+        # Toolbar is now inside body_widget so it slides with the content
+
+        # Horizontal layout for body + drawer
+        h_body_container = QWidget()
+        h_body_layout = QHBoxLayout(h_body_container)
+        h_body_layout.setContentsMargins(0, 0, 0, 0)
+        h_body_layout.setSpacing(0)
+
+        # Body container
+        body_widget = QWidget()
+        layout = QVBoxLayout(body_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
         # Toolbar
         self.toolbar = ToolBar()
         layout.addWidget(self.toolbar)
@@ -874,6 +955,11 @@ class TasksPage(QWidget):
         center_layout.addWidget(content_container, stretch=4)
         center_layout.addStretch(1)
         layout.addLayout(center_layout, stretch=1)
+        
+        h_body_layout.addWidget(body_widget, stretch=1)
+        h_body_layout.addWidget(self.drawer)
+        
+        main_layout.addWidget(h_body_container, stretch=1)
 
         # Connections
         self.toolbar.add_button.clicked.connect(self.add_task)
@@ -973,13 +1059,11 @@ class TasksPage(QWidget):
         return int(value) if value is not None else None
 
     def add_task(self) -> None:
-        dialog = TaskFormDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            task = dialog.get_task_data()
-            task_id = self.service.create_task(task)
-            self._selected_task_id = task_id
-            self.refresh()
-            self.select_task(task_id)
+        form = TaskFormWidget(self)
+        form.saved.connect(self._on_task_saved)
+        self.drawer.set_title("Create Task")
+        self.drawer.set_content(form)
+        self.drawer.open_drawer()
 
     def edit_task(self, task_id: int | None = None) -> None:
         if task_id is None:
@@ -989,12 +1073,22 @@ class TasksPage(QWidget):
         task = self.service.tasks.get(task_id)
         if not task:
             return
-        dialog = TaskFormDialog(self, task)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            updated_task = dialog.get_task_data()
-            self.service.update_task(task_id, updated_task)
-            self.refresh()
-            self.select_task(task_id)
+        form = TaskFormWidget(self, task)
+        form.saved.connect(self._on_task_saved)
+        self.drawer.set_title("Edit Task")
+        self.drawer.set_content(form)
+        self.drawer.open_drawer()
+
+    def _on_task_saved(self, task: Task) -> None:
+        self.drawer.close_drawer()
+        if task.id is None:
+            task_id = self.service.create_task(task)
+        else:
+            task_id = task.id
+            self.service.update_task(task_id, task)
+        self._selected_task_id = task_id
+        self.refresh()
+        self.select_task(task_id)
 
     def delete_task(self) -> None:
         task_id = self._selected_task_id_value()

@@ -97,15 +97,22 @@ class _CircleCheck(QWidget):
         rect   = QRectF(1.5, 1.5, 15, 15)
         accent = QColor(_ACCENT)
 
-        if self._checked:
-            # Filled grey circle
-            p.setBrush(QBrush(accent))
-            p.setPen(QPen(accent, 1.5))
-            p.drawEllipse(rect)
+        # Border-only circle
+        ring_color = accent if self._is_today else QColor("#444444")
+        if self._hovered:
+            ring_color = accent
 
-            # Dark tick mark  (✓ drawn as two line segments)
+        p.setBrush(
+            QBrush(QColor(200, 200, 200, 40)) if self._hovered and not self._checked
+            else Qt.BrushStyle.NoBrush
+        )
+        p.setPen(QPen(ring_color, 1.5))
+        p.drawEllipse(rect)
+
+        if self._checked:
+            # White (accent) tick mark
             tick_pen = QPen(
-                QColor("#111111"), 1.8,
+                accent, 1.8,
                 Qt.PenStyle.SolidLine,
                 Qt.PenCapStyle.RoundCap,
                 Qt.PenJoinStyle.RoundJoin,
@@ -117,19 +124,6 @@ class _CircleCheck(QWidget):
             path.lineTo(7.5, 12.2)
             path.lineTo(13.0, 5.8)
             p.drawPath(path)
-
-        else:
-            # Border-only circle
-            ring_color = accent if self._is_today else QColor("#444444")
-            if self._hovered:
-                ring_color = accent
-
-            p.setBrush(
-                QBrush(QColor(200, 200, 200, 40)) if self._hovered
-                else Qt.BrushStyle.NoBrush
-            )
-            p.setPen(QPen(ring_color, 1.5))
-            p.drawEllipse(rect)
 
         p.end()
 
@@ -211,13 +205,15 @@ class _GoalRow(QWidget):
         self.cb.toggled.connect(self._toggle)
         lay.addWidget(self.cb, alignment=Qt.AlignmentFlag.AlignVCenter)
 
-        self.lbl = QLabel(self.entry.title or "New goal")
-        self.lbl.setWordWrap(True)
+        self.lbl = QLineEdit(self.entry.title or "New goal")
+        self.lbl.setReadOnly(True)
         self.lbl.setStyleSheet(
-            f"color: {(_TEXT_MUT if done else _TEXT_PRI)}; font-size: 10pt; "
-            f"background: transparent; letter-spacing: 0.1px;"
+            f"QLineEdit {{ color: {(_TEXT_MUT if done else _TEXT_PRI)}; font-size: 10pt; "
+            f"background: transparent; border: none; letter-spacing: 0.1px;"
             + ("; text-decoration: line-through;" if done else "")
+            + f"}} QLineEdit:focus {{ border: 1px solid {_BORDER_TODAY}; border-radius: 4px; background: #222222; text-decoration: none; }}"
         )
+        self.lbl.returnPressed.connect(self._save_edit)
         lay.addWidget(self.lbl, 1)
 
         # edit button
@@ -267,83 +263,57 @@ class _GoalRow(QWidget):
         return QIcon(pix)
 
     def _edit(self) -> None:
+        self.lbl.setReadOnly(False)
+        self.lbl.setFocus()
+        self.lbl.selectAll()
+        
+    def _save_edit(self) -> None:
+        self.lbl.setReadOnly(True)
+        self.lbl.clearFocus()
         if self.entry.id and self.parent_page:
-            self.parent_page.edit_goal(self.entry.id)
+            self.entry.title = self.lbl.text().strip() or "Untitled goal"
+            self.parent_page.service.update_weekly_goal_entry(self.entry.id, self.entry)
+            self.parent_page.refresh()
 
     def _delete(self) -> None:
         if self.entry.id and self.parent_page:
             self.parent_page.delete_goal(self.entry.id)
 
 
-# ── Goal form dialog ───────────────────────────────────────────────────────────
-class GoalFormDialog(QDialog):
-    def __init__(
-        self,
-        parent=None,
-        entry: WeeklyGoalEntry | None = None,
-        day_label: str = "",
-    ) -> None:
+# ── Custom Scroll Area ────────────────────────────────────────────────────────
+class _PlannerScrollArea(QScrollArea):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowIcon(build_orbit_icon(16))
-        self.setWindowTitle("Edit Goal" if entry else "Add Goal")
-        self.setModal(True)
-        self.resize(400, 160)
-        self.entry = entry
-        self.day_label = day_label
-        self._build()
-        if entry:
-            self.title_edit.setText(entry.title)
-        self.setStyleSheet(f"""
-            QDialog   {{ background: #1a1a1a; color: {_TEXT_PRI}; }}
-            QLabel    {{ color: {_TEXT_SEC}; font-size: 9pt; background: transparent; }}
-            QLineEdit {{
-                background: #222222;
-                color: {_TEXT_PRI};
-                border: 1px solid rgba(255,255,255,0.10);
-                border-radius: 8px;
-                padding: 6px 10px;
-                font-size: 9.5pt;
-            }}
-            QLineEdit:focus {{
-                border: 1px solid rgba(255,255,255,0.30);
-            }}
-        """)
+        self._target_day_index = None
 
-    def _build(self) -> None:
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(22, 20, 22, 16)
-        lay.setSpacing(14)
+    def center_on_day(self, day_index: int):
+        self._target_day_index = day_index
+        # Defer the center calculation until the event loop is idle.
+        # This guarantees that all intermediate layout sizes are resolved.
+        QTimer.singleShot(0, self._safe_do_center)
 
-        form = QFormLayout()
-        form.setSpacing(10)
-        self.title_edit = QLineEdit()
-        self.title_edit.setPlaceholderText("What do you want to accomplish?")
-        form.addRow(QLabel("Goal"), self.title_edit)
-        form.addRow(QLabel("Day"),  QLabel(self.day_label))
-        lay.addLayout(form)
+    def _safe_do_center(self):
+        try:
+            # If the C++ object was deleted due to rapid tab switching, this raises RuntimeError
+            _ = self.viewport()
+        except RuntimeError:
+            return
+        self._do_center()
 
-        row = QHBoxLayout()
-        row.addStretch()
-        save = QPushButton("Save")
-        save.setFixedHeight(30)
-        save.setCursor(Qt.CursorShape.PointingHandCursor)
-        save.setStyleSheet(
-            f"QPushButton {{ background: {_ACCENT}; color: #111111; border: none; "
-            f"border-radius: 8px; padding: 0 18px; font-weight: 700; font-size: 9pt; }}"
-            f"QPushButton:hover {{ background: {_ACCENT_HOVER}; }}"
-        )
-        save.clicked.connect(self.accept)
-        row.addWidget(save)
-        lay.addLayout(row)
-
-    def get_goal_data(self) -> WeeklyGoalEntry:
-        return WeeklyGoalEntry(
-            title=self.title_edit.text().strip() or "Untitled goal",
-            day_of_week=self.entry.day_of_week if self.entry else 0,
-            completed=self.entry.completed if self.entry else False,
-            planner_id=self.entry.planner_id if self.entry else None,
-            id=self.entry.id if self.entry else None,
-        )
+    def _do_center(self):
+        if self._target_day_index is None:
+            return
+        bar = self.horizontalScrollBar()
+        
+        if bar.maximum() > 0:
+            viewport_width = self.viewport().width()
+            card_width = _DAY_WIDTH
+            card_spacing = 10
+            left_margin = 28
+            x_center = left_margin + self._target_day_index * (card_width + card_spacing) + card_width / 2
+            target = int(x_center - viewport_width / 2)
+            bar.setValue(max(0, min(target, bar.maximum())))
+            self._target_day_index = None
 
 
 # ── Planner page ───────────────────────────────────────────────────────────────
@@ -353,6 +323,8 @@ class PlannerPage(QWidget):
         self.service = service
         self.week_offset = 0
         self._day_notes: dict[int, str] = {}
+        self._inline_inputs: dict[int, QLineEdit] = {}
+        self._needs_center = False
         self.setStyleSheet(f"background: {_BG};")
 
         root = QVBoxLayout(self)
@@ -368,9 +340,17 @@ class PlannerPage(QWidget):
 
         self._render()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._needs_center = True
+        self._to_today()
+
     # ── Public ─────────────────────────────────────────────────────────────────
     def refresh(self) -> None:
         self._render()
+
+    def on_navigated_to(self) -> None:
+        self._to_today()
 
     # ── Helpers ────────────────────────────────────────────────────────────────
     def _week_days(self) -> list[tuple[str, str, date]]:
@@ -384,11 +364,12 @@ class PlannerPage(QWidget):
     @staticmethod
     def _arrow(label: str, callback) -> QPushButton:
         btn = QPushButton(label)
+        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.setFixedSize(28, 28)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             f"QPushButton {{ color: {_TEXT_SEC}; background: transparent; "
-            f"border: none; font-size: 16pt; padding: 0; }}"
+            f"border: none; outline: none; font-size: 16pt; padding: 0; }}"
             f"QPushButton:hover {{ color: {_TEXT_PRI}; }}"
         )
         btn.clicked.connect(callback)
@@ -399,7 +380,11 @@ class PlannerPage(QWidget):
         self.service.save_weekly_plan_note(plan_id, day_of_week, text)
 
     # ── Render ─────────────────────────────────────────────────────────────────
-    def _render(self) -> None:
+    def _render(self, reset_scroll: bool = False) -> None:
+        saved_scroll = None
+        if not reset_scroll and hasattr(self, '_scroll_area') and self._scroll_area:
+            saved_scroll = self._scroll_area.horizontalScrollBar().value()
+
         self.setUpdatesEnabled(False)
         while self.content_layout.count():
             item = self.content_layout.takeAt(0)
@@ -408,6 +393,10 @@ class PlannerPage(QWidget):
 
         today     = date.today()
         days      = self._week_days()
+        today_index = next(
+            (idx for idx, (_, _, d) in enumerate(days) if d == today),
+            None,
+        )
         plan      = self.service.get_or_create_weekly_plan(days[0][2])
 
         self._day_notes = {}
@@ -444,19 +433,41 @@ class PlannerPage(QWidget):
         n_lay.addSpacing(18)
 
         today_btn = QPushButton("Today")
+        today_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        today_btn.setStyleSheet(
-            f"QPushButton {{ color: {_TEXT_SEC}; background: transparent; border: none; font-size: 9.5pt; }}"
-            f"QPushButton:hover {{ color: {_TEXT_PRI}; }}"
-        )
+        
+        def _update_today_highlight(*args) -> None:
+            color = _TEXT_SEC
+            if today_index is not None and hasattr(self, '_scroll_area'):
+                bar = self._scroll_area.horizontalScrollBar()
+                vw = self._scroll_area.viewport().width()
+                if vw > 0:
+                    x_center = 28 + today_index * 310 + 150
+                    target_val = int(x_center - vw / 2)
+                    target_val = max(0, min(target_val, bar.maximum()))
+                    
+                    # Highlight only if the scrollbar is within 150px (half a card) of the ideal Today position
+                    if abs(bar.value() - target_val) < 150:
+                        color = _TEXT_PRI
+                else:
+                    color = _TEXT_PRI
+            today_btn.setStyleSheet(
+                f"QPushButton {{ color: {color}; background: transparent; border: none; outline: none; font-size: 9.5pt; }}"
+                f"QPushButton:hover {{ color: {_TEXT_PRI}; }}"
+            )
+
+        # Initialize its style
+        _update_today_highlight()
+
         today_btn.clicked.connect(self._to_today)
         n_lay.addWidget(today_btn)
         n_lay.addStretch(1)
         self.content_layout.addWidget(nav)
 
         # ── Day cards ─────────────────────────────────────────────────────────
-        scroll = QScrollArea()
+        scroll = _PlannerScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
             "QScrollArea { background: transparent; border: none; }"
             "QScrollBar:horizontal { height: 5px; background: transparent; margin: 0; }"
@@ -514,10 +525,12 @@ class PlannerPage(QWidget):
 
             # Custom _PlusButton
             plus_btn = _PlusButton()
-            plus_btn.clicked.connect(lambda d=day_idx: self.add_goal_for_day(d))
+            plus_btn.clicked.connect(lambda d=day_idx: self._show_inline_input(d))
             hr_lay.addWidget(plus_btn)
 
             c_lay.addWidget(hdr_row)
+            
+
 
             date_lbl = QLabel(date_str)
             date_lbl.setStyleSheet(
@@ -544,6 +557,34 @@ class PlannerPage(QWidget):
             for ent in day_ents:
                 gc_lay.addWidget(_GoalRow(ent, parent_page=self, is_today=is_today))
 
+            # Inline Goal Input (at the bottom of the tasks)
+            inline_wrap = QWidget()
+            inline_wrap.hide()
+            inline_lay = QHBoxLayout(inline_wrap)
+            inline_lay.setContentsMargins(0, 3, 0, 3)
+            inline_lay.setSpacing(8)
+
+            fake_cb = _CircleCheck(checked=False, is_today=is_today)
+            fake_cb.setEnabled(False)
+            inline_lay.addWidget(fake_cb, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+            inline_input = QLineEdit()
+            inline_input.setPlaceholderText("Enter goal...")
+            inline_input.setStyleSheet(
+                f"QLineEdit {{ color: {_TEXT_PRI}; font-size: 10pt; "
+                f"background: transparent; border: none; letter-spacing: 0.1px; }}"
+                f"QLineEdit:focus {{ border: 1px solid {_BORDER_TODAY}; border-radius: 4px; background: #222222; }}"
+            )
+            # Store the wrapper as a dynamic property on the input so we can easily show it later
+            inline_input.setProperty("wrapper", inline_wrap)
+            self._inline_inputs[day_idx] = inline_input
+            inline_input.returnPressed.connect(
+                lambda d=day_idx, inp=inline_input, p=plan.id: self._save_new_goal(d, inp, p)
+            )
+            inline_lay.addWidget(inline_input, 1)
+
+            gc_lay.addWidget(inline_wrap)
+
             gc_lay.addStretch(1)
             c_lay.addWidget(gc, 1)
             c_lay.addSpacing(10)
@@ -569,63 +610,42 @@ class PlannerPage(QWidget):
         scroll.setWidget(body)
         self.content_layout.addWidget(scroll, 1)
 
-        today_index = next(
-            (idx for idx, (_, _, d) in enumerate(days) if d == today),
-            None,
-        )
-        if today_index is not None:
-            self._center_today_card(scroll, today_index)
+        self._scroll_area = scroll
+        self._scroll_area.horizontalScrollBar().valueChanged.connect(_update_today_highlight)
+        QTimer.singleShot(0, _update_today_highlight)
+
+        if saved_scroll is not None:
+            QTimer.singleShot(0, lambda: self._scroll_area.horizontalScrollBar().setValue(saved_scroll))
+        elif today_index is not None:
+            scroll.center_on_day(today_index)
 
         self.setUpdatesEnabled(True)
 
     # ── Navigation ─────────────────────────────────────────────────────────────
-    def _center_today_card(self, scroll: QScrollArea, day_index: int) -> None:
-        def center() -> None:
-            bar = scroll.horizontalScrollBar()
-            viewport_width = scroll.viewport().width()
-            card_width = _DAY_WIDTH
-            card_spacing = 10
-            left_margin = 28
-            x_center = left_margin + day_index * (card_width + card_spacing) + card_width / 2
-            target = int(x_center - viewport_width / 2)
-            bar.setValue(max(0, min(target, bar.maximum())))
-
-        QTimer.singleShot(0, center)
-
     def _jump(self, delta: int) -> None:
         self.week_offset += delta
-        self._render()
+        self._render(reset_scroll=True)
 
     def _to_today(self) -> None:
         self.week_offset = 0
-        self._render()
+        self._render(reset_scroll=True)
 
     # ── Goal actions ───────────────────────────────────────────────────────────
-    def add_goal_for_today(self) -> None:
-        self.add_goal_for_day(date.today().weekday())
+    def _show_inline_input(self, day_idx: int) -> None:
+        inp = self._inline_inputs.get(day_idx)
+        if inp:
+            wrapper = inp.property("wrapper")
+            if wrapper:
+                wrapper.show()
+            inp.show()
+            inp.setFocus()
 
-    def add_goal_for_day(self, day_of_week: int) -> None:
-        plan     = self.service.get_or_create_weekly_plan(self._week_days()[0][2])
-        day_name = self._week_days()[day_of_week][0]
-        dialog   = GoalFormDialog(self, None, day_label=day_name)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            entry = dialog.get_goal_data()
-            entry.day_of_week = day_of_week
-            entry.planner_id  = plan.id
-            self.service.create_weekly_goal_entry(plan.id, entry)
-            self._render()
-
-    def edit_goal(self, goal_id: int) -> None:
-        entry = self.service.get_weekly_goal_entry(goal_id)
-        if not entry:
-            return
-        dialog = GoalFormDialog(
-            self, entry,
-            day_label=self._week_days()[entry.day_of_week][0],
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.service.update_weekly_goal_entry(goal_id, dialog.get_goal_data())
-            self._render()
+    def _save_new_goal(self, day_idx: int, inp: QLineEdit, plan_id: int) -> None:
+        text = inp.text().strip()
+        if text:
+            entry = WeeklyGoalEntry(title=text, day_of_week=day_idx, planner_id=plan_id)
+            self.service.create_weekly_goal_entry(plan_id, entry)
+        self.refresh()
 
     def delete_goal(self, goal_id: int) -> None:
         self.service.delete_weekly_goal_entry(goal_id)

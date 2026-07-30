@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPen, QPixmap, QIcon, QTextCharFormat,
     QTextBlockFormat, QTextCursor,
 )
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -21,10 +22,12 @@ from PySide6.QtWidgets import (
 
 from core.models import DiaryEntry
 from core.services import ProductivityService
+from .helper.sidebar import _ICON_CHEVRONS_LEFT, _ICON_CHEVRONS_RIGHT
 
 
 # ── Palette — mirrors app-wide strict B&W/grey scheme ─────────────────────────
 _BG           = "#111111"
+_RIGHT_BG     = "#0a0a0a"
 _SIDEBAR_BG   = _BG
 _CARD_HOV     = "rgba(255,255,255,0.025)"
 _CARD_SEL     = "rgba(255,255,255,0.05)"
@@ -39,8 +42,18 @@ _T_DIM        = "#2a2a2c"
 _SURFACE_IN   = "#1c1c1c"
 _MONO         = "Courier New"
 
-_SIDEBAR_W    = 236
+_SIDEBAR_W    = 280
 _AUTOSAVE_MS  = 850      # debounce window before writing to service
+
+
+def _svg_icon(svg_bytes: bytes, size: int) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    renderer = QSvgRenderer(svg_bytes)
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+    return QIcon(pixmap)
 
 
 # ── Thin rules ─────────────────────────────────────────────────────────────────
@@ -164,15 +177,13 @@ class _EntryItem(QWidget):
         db.setContentsMargins(0, 0, 0, 0)
         db.setSpacing(1)
 
-        pri_color = _T_PRI if self.is_today else _T_SEC
-        day_num = QLabel(f"{self.entry_date.day:02d}")
-        day_num.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        day_num.setStyleSheet(
-            f"color: {pri_color};"
+        self.day_num = QLabel(f"{self.entry_date.day:02d}")
+        self.day_num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.day_num.setStyleSheet(
             f"font-size: 11pt; font-weight: {'700' if self.is_today else '500'};"
             f"font-family: '{_MONO}'; background: transparent; letter-spacing: -0.5px;"
         )
-        db.addWidget(day_num)
+        db.addWidget(self.day_num)
 
         mon = QLabel(self.entry_date.strftime("%b").upper())
         mon.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -197,16 +208,15 @@ class _EntryItem(QWidget):
         il.setSpacing(3)
 
         weekday_text = "TODAY" if self.is_today else self.entry_date.strftime("%A")
-        wday = QLabel(weekday_text)
-        wday.setStyleSheet(
-            f"color: {pri_color};"
+        self.wday = QLabel(weekday_text)
+        self.wday.setStyleSheet(
             f"font-size: {'7.5' if self.is_today else '8'}pt;"
             f"font-weight: {'700' if self.is_today else '400'};"
             f"letter-spacing: {'1.0' if self.is_today else '0'}px;"
             "background: transparent;"
         )
-        wday.setMinimumWidth(1)
-        il.addWidget(wday)
+        self.wday.setMinimumWidth(1)
+        il.addWidget(self.wday)
 
         snip_raw = (snippet or "").strip().split("\n")[0] or "—"
         snip = _ElidedLabel(snip_raw)
@@ -221,10 +231,30 @@ class _EntryItem(QWidget):
     def _restyle(self) -> None:
         if self.selected:
             self.setStyleSheet(self._SEL)
+            is_active = True
         elif self._hov:
             self.setStyleSheet(self._HOV)
+            is_active = False
         else:
             self.setStyleSheet(self._IDLE)
+            is_active = False
+            
+        pri_color = _T_PRI if is_active else _T_SEC
+        
+        if hasattr(self, 'day_num'):
+            self.day_num.setStyleSheet(
+                f"color: {pri_color};"
+                f"font-size: 11pt; font-weight: {'700' if self.is_today else '500'};"
+                f"font-family: '{_MONO}'; background: transparent; letter-spacing: -0.5px;"
+            )
+        if hasattr(self, 'wday'):
+            self.wday.setStyleSheet(
+                f"color: {pri_color};"
+                f"font-size: {'7.5' if self.is_today else '8'}pt;"
+                f"font-weight: {'700' if self.is_today else '400'};"
+                f"letter-spacing: {'1.0' if self.is_today else '0'}px;"
+                "background: transparent;"
+            )
 
     def set_selected(self, val: bool) -> None:
         self.selected = val
@@ -251,6 +281,7 @@ class _Sidebar(QWidget):
     """
 
     date_selected = Signal(date)
+    sidebar_toggle_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -270,21 +301,34 @@ class _Sidebar(QWidget):
         hdr.setStyleSheet(f"background: {_SIDEBAR_BG};")
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(14, 0, 14, 0)
-        title = QLabel("JOURNAL")
-        title.setStyleSheet(
-            f"color: {_T_DIM}; font-size: 6.8pt; font-weight: 700;"
-            f"letter-spacing: 1.8px; background: transparent;"
-        )
+        title = QLabel("Journal")
+        f = title.font()
+        f.setPointSize(16)
+        f.setWeight(QFont.Weight.Bold)
+        title.setFont(f)
+        title.setStyleSheet(f"color: {_T_PRI}; background: transparent;")
         hl.addWidget(title)
         hl.addStretch()
-        lay.addWidget(hdr)
-        lay.addWidget(_hdiv())
 
-        # Scrollable list
+        self._menu_btn = QPushButton()
+        self._menu_btn.setIcon(_svg_icon(_ICON_CHEVRONS_LEFT, 16))
+        self._menu_btn.setIconSize(QSize(14, 14))
+        self._menu_btn.setFixedSize(26, 26)
+        self._menu_btn.setFlat(True)
+        self._menu_btn.setToolTip("Toggle sidebar")
+        self._menu_btn.setStyleSheet(
+            "QPushButton { background: transparent; border: none; border-radius: 5px; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.08); }"
+        )
+        self._menu_btn.clicked.connect(self.sidebar_toggle_requested.emit)
+        hl.addWidget(self._menu_btn)
+
+        lay.addWidget(hdr)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
             f"QScrollArea {{ background: {_SIDEBAR_BG}; border: none; }}"
             "QScrollBar:vertical { width: 3px; background: transparent; margin: 0; }"
@@ -374,7 +418,7 @@ class _WritingPane(QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(f"background: {_BG};")
+        self.setStyleSheet(f"background: {_RIGHT_BG};")
         self._build()
 
     def _build(self) -> None:
@@ -385,7 +429,7 @@ class _WritingPane(QWidget):
         # ── Navigation bar ─────────────────────────────────────────────────
         nav = QWidget()
         nav.setFixedHeight(56)
-        nav.setStyleSheet(f"background: {_BG};")
+        nav.setStyleSheet(f"background: {_RIGHT_BG};")
         nl = QHBoxLayout(nav)
         nl.setContentsMargins(56, 0, 56, 0)
         nl.setSpacing(0)
@@ -403,9 +447,10 @@ class _WritingPane(QWidget):
         nl.addWidget(self.date_lbl, 1)
 
         self.today_btn = QPushButton("Today")
+        self.today_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.today_btn.setStyleSheet(
-            f"QPushButton {{ color: {_T_TER}; background: transparent; border: none;"
+            f"QPushButton {{ color: {_T_TER}; background: transparent; border: none; outline: none;"
             f"font-size: 8pt; letter-spacing: 0.2px; }}"
             f"QPushButton:hover {{ color: {_T_SEC}; }}"
         )
@@ -416,11 +461,10 @@ class _WritingPane(QWidget):
         nl.addWidget(self.next_btn)
 
         lay.addWidget(nav)
-        lay.addWidget(_hdiv())
 
         # ── Editor area ────────────────────────────────────────────────────
         editor_wrap = QWidget()
-        editor_wrap.setStyleSheet(f"background: {_BG};")
+        editor_wrap.setStyleSheet(f"background: {_RIGHT_BG};")
         ew = QVBoxLayout(editor_wrap)
         ew.setContentsMargins(56, 28, 56, 16)
         ew.setSpacing(0)
@@ -436,6 +480,7 @@ class _WritingPane(QWidget):
 
         # Main editor
         self.editor = QTextEdit()
+        self.editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.editor.setPlaceholderText(
             "What's on your mind?\n\n"
             "Capture today's thoughts, wins, reflections, gratitude…"
@@ -548,14 +593,26 @@ class _WritingPane(QWidget):
         delta = (today - d).days
         if d == today:
             self.sub_lbl.setText("TODAY")
-        elif delta == 1:
-            self.sub_lbl.setText("YESTERDAY")
-        elif 2 <= delta <= 6:
-            self.sub_lbl.setText(f"{delta} DAYS AGO")
-        elif d < today:
-            self.sub_lbl.setText(d.strftime("%B %Y").upper())
+            self.today_btn.setStyleSheet(
+                f"QPushButton {{ color: {_T_PRI}; background: transparent; border: none; outline: none;"
+                f"font-size: 8pt; letter-spacing: 0.2px; }}"
+                f"QPushButton:hover {{ color: {_T_PRI}; }}"
+            )
         else:
-            self.sub_lbl.setText("")
+            if delta == 1:
+                self.sub_lbl.setText("YESTERDAY")
+            elif 2 <= delta <= 6:
+                self.sub_lbl.setText(f"{delta} DAYS AGO")
+            elif d < today:
+                self.sub_lbl.setText(d.strftime("%B %Y").upper())
+            else:
+                self.sub_lbl.setText("")
+                
+            self.today_btn.setStyleSheet(
+                f"QPushButton {{ color: {_T_TER}; background: transparent; border: none; outline: none;"
+                f"font-size: 8pt; letter-spacing: 0.2px; }}"
+                f"QPushButton:hover {{ color: {_T_SEC}; }}"
+            )
 
     def set_content(self, text: str, has_saved_entry: bool = False) -> None:
         """Load text without triggering the auto-save signal."""
@@ -622,7 +679,7 @@ class DiaryPage(QWidget):
     def __init__(self, service: ProductivityService) -> None:
         super().__init__()
         self.service = service
-        self.setStyleSheet(f"background: {_BG};")
+        self.setStyleSheet(f"background: {_RIGHT_BG};")
 
         self._current_date: date = date.today()
 
@@ -644,15 +701,17 @@ class DiaryPage(QWidget):
 
         # Body
         body = QWidget()
-        body.setStyleSheet(f"background: {_BG};")
+        body.setStyleSheet(f"background: {_RIGHT_BG};")
         bl = QHBoxLayout(body)
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(0)
 
-        self._sidebar = _Sidebar()
-        self._sidebar.date_selected.connect(self._nav_to)
-        bl.addWidget(self._sidebar)
-        bl.addWidget(_vdiv())
+        self.sidebar = _Sidebar()
+        self.sidebar.date_selected.connect(self._nav_to)
+        self.sidebar.sidebar_toggle_requested.connect(self._toggle_sidebar)
+        bl.addWidget(self.sidebar)
+        self.divider = _vdiv()
+        bl.addWidget(self.divider)
 
         self._pane = _WritingPane()
         self._pane.prev_btn.clicked.connect(self._prev_day)
@@ -661,10 +720,39 @@ class DiaryPage(QWidget):
         self._pane.content_changed.connect(self._on_content_changed)
         self._pane.delete_requested.connect(self._delete_entry)
         bl.addWidget(self._pane, 1)
-
         root.addWidget(body, 1)
 
-    # ── Day navigation ────────────────────────────────────────────────────
+        # Floating toggle button for when sidebar is hidden
+        self._floating_toggle = QPushButton(self)
+        self._floating_toggle.setIcon(_svg_icon(_ICON_CHEVRONS_RIGHT, 16))
+        self._floating_toggle.setIconSize(QSize(14, 14))
+        self._floating_toggle.setFixedSize(26, 26)
+        self._floating_toggle.setFlat(True)
+        self._floating_toggle.setToolTip("Show sidebar")
+        self._floating_toggle.setStyleSheet(
+            "QPushButton { background: transparent; border: none; border-radius: 5px; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.08); }"
+        )
+        self._floating_toggle.clicked.connect(self._toggle_sidebar)
+        self._floating_toggle.hide()
+
+    def _toggle_sidebar(self) -> None:
+        is_hidden = not self.sidebar.isVisible()
+        if is_hidden:
+            self.sidebar.show()
+            self.divider.show()
+            self._floating_toggle.hide()
+        else:
+            self.sidebar.hide()
+            self.divider.hide()
+            self._floating_toggle.show()
+            self._floating_toggle.raise_()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, '_floating_toggle'):
+            self._floating_toggle.move(16, 15)
+
 
     def _prev_day(self) -> None:
         self._nav_to(self._current_date - timedelta(days=1))
@@ -697,7 +785,7 @@ class DiaryPage(QWidget):
 
     def _refresh_sidebar(self) -> None:
         entries = self.service.list_diary_entries()
-        self._sidebar.populate(entries, selected_date=self._current_date)
+        self.sidebar.populate(entries, selected_date=self._current_date)
 
     # ── Auto-save ──────────────────────────────────────────────────────────
 

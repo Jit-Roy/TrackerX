@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from core.models import NoteNode
 from core.services import ProductivityService
+from .helper.sidebar import _ICON_CHEVRONS_LEFT, _ICON_CHEVRONS_RIGHT
 
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -222,6 +223,9 @@ class _NodeRow(QWidget):
     add_child_req  = Signal(int)
     rename_req     = Signal(int)
     delete_req     = Signal(int)
+    commit_creation = Signal(str)
+    cancel_creation = Signal()
+    rename_commit   = Signal(int, str)
 
     def __init__(
         self,
@@ -233,6 +237,7 @@ class _NodeRow(QWidget):
         is_selected: bool,
         continues: list[bool],   # continues[i] = True if ancestor at depth i has more siblings
         parent: QWidget | None = None,
+        is_creating: bool = False,
     ) -> None:
         super().__init__(parent)
         self.node_id     = node_id
@@ -240,6 +245,7 @@ class _NodeRow(QWidget):
         self._hovered    = False
         self._depth      = depth
         self._continues  = continues
+        self.is_creating = is_creating
 
         self.setFixedHeight(28)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -275,56 +281,152 @@ class _NodeRow(QWidget):
         lay.addWidget(self._chv)
         lay.addSpacing(4)
 
-        # Title label (transparent to mouse events → parent catches them)
-        self._lbl = QLabel(title)
-        font = self._lbl.font()
-        font.setPointSize(9)
-        self._lbl.setFont(font)
-        self._lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self._lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._lbl.setStyleSheet(f"color: {_T_PRI}; background: transparent;")
-        lay.addWidget(self._lbl, 1)
+        if is_creating:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self._edit = QLineEdit(title)
+            font = self._edit.font()
+            font.setPointSize(9)
+            self._edit.setFont(font)
+            self._edit.setStyleSheet(
+                f"QLineEdit {{ color: {_T_PRI}; background: transparent; border: none; padding: 0; }}"
+                f"QLineEdit:focus {{ background: transparent; border: none; }}"
+            )
+            self._edit.setPlaceholderText("Page name...")
+            lay.addWidget(self._edit, 1)
 
-        # Actions wrapper (+ and Trash)
-        self._actions_wrap = QWidget()
-        self._actions_wrap.setStyleSheet("background: transparent;")
-        self._actions_wrap.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        al = QHBoxLayout(self._actions_wrap)
-        al.setContentsMargins(0, 0, 0, 0)
-        al.setSpacing(2)
+            self._actions_wrap = QWidget()
+            self._actions_wrap.hide()
+            lay.addWidget(self._actions_wrap)
 
-        # Add sub-page button
-        self._add_btn = QPushButton()
-        self._add_btn.setIcon(_svg_icon(_SVG_PLUS, 11))
-        self._add_btn.setIconSize(QSize(11, 11))
-        self._add_btn.setFixedSize(22, 22)
-        self._add_btn.setFlat(True)
-        self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._add_btn.setToolTip("Add sub-page")
-        self._add_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.12); }"
-        )
-        self._add_btn.clicked.connect(lambda: self.add_child_req.emit(self.node_id))
-        al.addWidget(self._add_btn)
+            self._edit.installEventFilter(self)
+            self._edit.returnPressed.connect(self._commit_creation)
+            QTimer.singleShot(0, self._edit.setFocus)
+        else:
+            # Title label (transparent to mouse events → parent catches them)
+            self._lbl = QLabel(title)
+            font = self._lbl.font()
+            font.setPointSize(9)
+            self._lbl.setFont(font)
+            self._lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            self._lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            self._lbl.setStyleSheet(f"color: {_T_PRI}; background: transparent;")
+            lay.addWidget(self._lbl, 1)
 
-        # Delete button
-        self._del_btn = QPushButton()
-        self._del_btn.setIcon(_svg_icon(_SVG_TRASH, 12))
-        self._del_btn.setIconSize(QSize(12, 12))
-        self._del_btn.setFixedSize(22, 22)
-        self._del_btn.setFlat(True)
-        self._del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._del_btn.setToolTip("Delete page")
-        self._del_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; border-radius: 4px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.12); }"
-        )
-        self._del_btn.clicked.connect(lambda: self.delete_req.emit(self.node_id))
-        al.addWidget(self._del_btn)
+            # Actions wrapper (+ and Trash)
+            self._actions_wrap = QWidget()
+            self._actions_wrap.setStyleSheet("background: transparent;")
+            self._actions_wrap.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+            al = QHBoxLayout(self._actions_wrap)
+            al.setContentsMargins(0, 0, 0, 0)
+            al.setSpacing(2)
 
+            # Add sub-page button
+            self._add_btn = QPushButton()
+            self._add_btn.setIcon(_svg_icon(_SVG_PLUS, 11))
+            self._add_btn.setIconSize(QSize(11, 11))
+            self._add_btn.setFixedSize(20, 20)
+            self._add_btn.setFlat(True)
+            self._add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._add_btn.setStyleSheet(
+                "QPushButton { background: transparent; border: none; border-radius: 3px; }"
+                "QPushButton:hover { background: rgba(255,255,255,0.12); }"
+            )
+            self._add_btn.clicked.connect(lambda: self.add_child_req.emit(node_id))
+            al.addWidget(self._add_btn)
+
+            # Delete button
+            self._del_btn = QPushButton()
+            self._del_btn.setIcon(_svg_icon(_SVG_TRASH, 12))
+            self._del_btn.setIconSize(QSize(12, 12))
+            self._del_btn.setFixedSize(20, 20)
+            self._del_btn.setFlat(True)
+            self._del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._del_btn.setStyleSheet(
+                "QPushButton { background: transparent; border: none; border-radius: 3px; }"
+                "QPushButton:hover { background: rgba(255,0,0,0.2); }"
+            )
+            self._del_btn.clicked.connect(lambda: self.delete_req.emit(node_id))
+            al.addWidget(self._del_btn)
+
+            lay.addWidget(self._actions_wrap)
+            self._actions_wrap.hide()
+
+    def eventFilter(self, obj, event) -> bool:
+        if hasattr(self, '_edit') and obj == self._edit:
+            if event.type() == event.Type.FocusOut:
+                if self.is_creating:
+                    self._commit_creation()
+                else:
+                    self._commit_rename()
+                return False
+            elif event.type() == event.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+                if self.is_creating:
+                    if not getattr(self, '_handled', False):
+                        self._handled = True
+                        self.cancel_creation.emit()
+                else:
+                    self._cancel_rename()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _commit_creation(self) -> None:
+        if getattr(self, '_handled', False):
+            return
+        self._handled = True
+        text = self._edit.text().strip()
+        if text:
+            self.commit_creation.emit(text)
+        else:
+            self.cancel_creation.emit()
+
+    def start_inline_edit(self) -> None:
+        if hasattr(self, '_edit') and self._edit.isVisible():
+            return
+            
+        self._lbl.hide()
         self._actions_wrap.hide()
-        lay.addWidget(self._actions_wrap)
+        
+        self._edit = QLineEdit(self._lbl.text())
+        font = self._edit.font()
+        font.setPointSize(9)
+        self._edit.setFont(font)
+        self._edit.setStyleSheet(
+            f"QLineEdit {{ color: {_T_PRI}; background: transparent; border: none; padding: 0; }}"
+            f"QLineEdit:focus {{ background: transparent; border: none; }}"
+        )
+        self.layout().insertWidget(2, self._edit, 1)
+        
+        self._handled_rename = False
+        self._edit.installEventFilter(self)
+        self._edit.returnPressed.connect(self._commit_rename)
+        
+        def _focus():
+            if hasattr(self, '_edit'):
+                self._edit.setFocus()
+                self._edit.setCursorPosition(len(self._edit.text()))
+                
+        QTimer.singleShot(0, _focus)
+
+    def _commit_rename(self) -> None:
+        if getattr(self, '_handled_rename', False):
+            return
+        self._handled_rename = True
+        
+        text = self._edit.text().strip()
+        if text and text != self._lbl.text():
+            self.rename_commit.emit(self.node_id, text)
+        else:
+            self._cancel_rename()
+            
+    def _cancel_rename(self) -> None:
+        if hasattr(self, '_edit'):
+            self._edit.hide()
+            self._edit.deleteLater()
+            del self._edit
+        self._handled_rename = False
+        self._lbl.show()
+        if self._hovered:
+            self._actions_wrap.show()
 
     # ── Paint: background + tree connector lines ───────────────────────────
 
@@ -399,6 +501,11 @@ class _NodeRow(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self.node_clicked.emit(self.node_id)
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_creating', False):
+            self.start_inline_edit()
+        super().mouseDoubleClickEvent(event)
 
     # ── Context menu ──────────────────────────────────────────────────────
 
@@ -480,6 +587,10 @@ class _LeftPanel(QWidget):
         self.service    = service
         self._expanded: set[int] = set()
         self._hidden: set[int] = set()
+
+        self._is_creating_node = False
+        self._creating_parent_id: int | None = None
+
         self._selected: int | None = None
         self._rows: list[_NodeRow] = []
         self._searching = False
@@ -526,9 +637,9 @@ class _LeftPanel(QWidget):
         new_btn.clicked.connect(self._add_root_node)
         hl.addWidget(new_btn)
 
-        # Hamburger → collapse/expand sidebar
+        # Chevron left → collapse sidebar
         self._menu_btn = QPushButton()
-        self._menu_btn.setIcon(_svg_icon(_SVG_MENU, 14))
+        self._menu_btn.setIcon(_svg_icon(_ICON_CHEVRONS_LEFT, 16))
         self._menu_btn.setIconSize(QSize(14, 14))
         self._menu_btn.setFixedSize(26, 26)
         self._menu_btn.setFlat(True)
@@ -577,8 +688,9 @@ class _LeftPanel(QWidget):
         # ── Scrollable tree body
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
+        self._scroll.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setStyleSheet(
             f"QScrollArea {{ background: {_LEFT_BG}; border: none; }}"
             "QScrollBar:vertical { width: 3px; background: transparent; }"
@@ -590,6 +702,7 @@ class _LeftPanel(QWidget):
 
         self._body = QWidget()
         self._body.setStyleSheet(f"background: {_LEFT_BG};")
+        self._body.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._body_lay = QVBoxLayout(self._body)
         self._body_lay.setContentsMargins(4, 6, 4, 12)
         self._body_lay.setSpacing(1)
@@ -647,6 +760,8 @@ class _LeftPanel(QWidget):
             self._body_lay.addWidget(hint)
         else:
             self._render_level(roots, depth=0, continues=[])
+            if self._is_creating_node and self._creating_parent_id is None:
+                self._insert_creating_row(depth=0, continues=[])
 
         self._body_lay.addStretch(1)
 
@@ -693,6 +808,7 @@ class _LeftPanel(QWidget):
             row.toggle_expand.connect(self._on_toggle_expand)
             row.add_child_req.connect(self._add_child_node)
             row.rename_req.connect(self._rename_node)
+            row.rename_commit.connect(self._on_rename_commit)
             row.delete_req.connect(self._delete_node)
 
             self._body_lay.addWidget(row)
@@ -704,6 +820,29 @@ class _LeftPanel(QWidget):
                 # child_continues: same as node_continues (each child knows whether
                 # its OWN parent column continues — handled recursively)
                 self._render_level(children, depth + 1, node_continues)
+            
+            # If we are creating a child for THIS node, inject it after its children
+            if self._is_creating_node and self._creating_parent_id == node.id:
+                self._insert_creating_row(depth + 1, node_continues)
+
+    def _insert_creating_row(self, depth: int, continues: list[bool]) -> None:
+        row = _NodeRow(-1, "", depth, False, False, False, continues, parent=self._body, is_creating=True)
+        row.commit_creation.connect(self._on_creation_commit)
+        row.cancel_creation.connect(self._on_creation_cancel)
+        self._body_lay.addWidget(row)
+        self._rows.append(row)
+
+    def _on_creation_commit(self, title: str) -> None:
+        self._is_creating_node = False
+        node = NoteNode(title=title, parent_id=self._creating_parent_id)
+        node_id = self.service.create_node(node)
+        self._selected = node_id
+        self.populate(select_node_id=node_id)
+        self.note_selected.emit(node_id)
+
+    def _on_creation_cancel(self) -> None:
+        self._is_creating_node = False
+        self.populate(select_node_id=self._selected)
 
     # ── Selection ─────────────────────────────────────────────────────────
 
@@ -725,25 +864,25 @@ class _LeftPanel(QWidget):
     # ── CRUD ──────────────────────────────────────────────────────────────
 
     def _add_root_node(self) -> None:
-        node_id = self.service.create_node(NoteNode(title="Untitled"))
-        self._selected = node_id
+        self._is_creating_node = True
+        self._creating_parent_id = None
         self.populate()
-        self.note_selected.emit(node_id)
 
     def _add_child_node(self, parent_id: int) -> None:
         self._expanded.add(parent_id)
-        node_id = self.service.create_node(NoteNode(title="Untitled", parent_id=parent_id))
-        self._selected = node_id
+        self._is_creating_node = True
+        self._creating_parent_id = parent_id
         self.populate()
-        self.note_selected.emit(node_id)
 
     def _rename_node(self, node_id: int) -> None:
-        node = self.service.get_node(node_id)
-        current = node.title if node else ""
-        title, ok = QInputDialog.getText(self, "Rename", "Name:", text=current)
-        if ok and title.strip():
-            self.service.rename_node(node_id, title.strip())
-            self.populate(select_node_id=self._selected)
+        for row in self._rows:
+            if row.node_id == node_id:
+                row.start_inline_edit()
+                break
+
+    def _on_rename_commit(self, node_id: int, new_title: str) -> None:
+        self.service.rename_node(node_id, new_title)
+        self.populate(select_node_id=self._selected)
 
     def _delete_node(self, node_id: int) -> None:
         self.delete_requested.emit(node_id)
@@ -863,6 +1002,7 @@ class _EditorPanel(QWidget):
 
         # Body editor
         self._editor = QTextEdit()
+        self._editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._editor.setPlaceholderText("Start writing your note…")
         bf = QFont("Georgia", 10)
         bf.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
@@ -940,6 +1080,9 @@ class _EditorPanel(QWidget):
 
     def get_content(self) -> str:
         return self._editor.toPlainText()
+        
+    def focus_editor(self) -> None:
+        self._editor.setFocus()
 
 
 # ── NotesPage (top-level widget) ──────────────────────────────────────────────
@@ -988,7 +1131,7 @@ class NotesPage(QWidget):
 
         # Floating toggle button for when sidebar is hidden
         self._floating_toggle = QPushButton(self)
-        self._floating_toggle.setIcon(_svg_icon(_SVG_MENU, 14))
+        self._floating_toggle.setIcon(_svg_icon(_ICON_CHEVRONS_RIGHT, 16))
         self._floating_toggle.setIconSize(QSize(14, 14))
         self._floating_toggle.setFixedSize(26, 26)
         self._floating_toggle.setFlat(True)
@@ -1080,3 +1223,7 @@ class NotesPage(QWidget):
         self._left.setVisible(not visible)
         self._divider.setVisible(not visible)
         self._floating_toggle.setVisible(visible)
+        
+        # When hiding the sidebar, automatically focus the main writing area
+        if visible and self._current_node_id is not None:
+            self._editor.focus_editor()

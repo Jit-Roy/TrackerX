@@ -76,5 +76,7 @@ class MainWindow(QMainWindow):
     def _on_nav_changed(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
         current_page = self.stack.currentWidget()
-        if hasattr(current_page, "refresh"):
+        if hasattr(current_page, "on_navigated_to"):
+            current_page.on_navigated_to()
+        elif hasattr(current_page, "refresh"):
             current_page.refresh()
