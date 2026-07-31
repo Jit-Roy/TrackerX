@@ -13,3 +13,4 @@ dist/
 backups/
 .conda/
 trackerx.egg-info/
+settings.json

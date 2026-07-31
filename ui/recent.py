@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QPen
+from PySide6.QtGui import QFont, QFontMetrics, QIcon, QPixmap, QPainter, QColor, QPen
 from PySide6.QtCore import QDate, QEvent, QSize, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -126,6 +126,30 @@ _ADD_TODAY_BTN = """
     }
 """
 
+class _ElidedLabel(QLabel):
+    """A label that gracefully elides its text with an ellipsis if it exceeds the width."""
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(1)
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        metrics = QFontMetrics(self.font())
+        elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
+        
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
+        painter.end()
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(1, super().minimumSizeHint().height())
+
 
 class TaskItemWidget(QWidget):
     """Monochrome task row widget."""
@@ -217,7 +241,7 @@ class TaskItemWidget(QWidget):
         text_layout.setSpacing(3)
         text_layout.setContentsMargins(6, 0, 0, 0)
 
-        title = QLabel(task.title)
+        title = _ElidedLabel(task.title)
         if is_completed:
             title.setStyleSheet(
                 "color: #484848; text-decoration: line-through; "
@@ -236,7 +260,7 @@ class TaskItemWidget(QWidget):
         text_layout.addWidget(title)
 
         desc_text = task.description if task.description and task.description.strip() else "No description"
-        desc_label = QLabel(desc_text)
+        desc_label = _ElidedLabel(desc_text)
         if is_completed:
             desc_label.setStyleSheet("color: #484848; font-size: 8.5pt; background: transparent;")
         else:
@@ -263,10 +287,13 @@ class TaskItemWidget(QWidget):
         self.tracker_time_label.setAlignment(
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight
         )
+        self.tracker_time_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.tracker_time_label.setStyleSheet(
             "color: #636366; font-size: 8.5pt; background: transparent; "
             "min-width: 52px; letter-spacing: 0.2px;"
         )
+        self.tracker_time_label.ensurePolished()
+        self.tracker_time_label.setMinimumWidth(max(52, self.tracker_time_label.sizeHint().width()))
 
         self.tracker_btn = QPushButton("▶")
         self.tracker_btn.setFixedSize(28, 28)
@@ -317,6 +344,14 @@ class TaskItemWidget(QWidget):
                 border-radius: 8px;
                 letter-spacing: 0.2px;
             """)
+            self.date_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.date_label.ensurePolished()
+            
+            # Fallback to a calculated width if sizeHint fails due to unpolished font/padding
+            fm = QFontMetrics(self.date_label.font())
+            calc_w = fm.horizontalAdvance(self.date_label.text()) + 24
+            
+            self.date_label.setMinimumWidth(max(calc_w, self.date_label.sizeHint().width()))
             right_layout.addWidget(self.date_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         else:
             self.date_label = QLabel()
@@ -332,6 +367,13 @@ class TaskItemWidget(QWidget):
             self.add_today_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self.add_today_btn.setStyleSheet(_ADD_TODAY_BTN)
             self.add_today_btn.setFixedHeight(24)
+            self.add_today_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.add_today_btn.ensurePolished()
+            
+            fm = QFontMetrics(self.add_today_btn.font())
+            calc_w = fm.horizontalAdvance(self.add_today_btn.text()) + 24
+            
+            self.add_today_btn.setMinimumWidth(max(calc_w, self.add_today_btn.sizeHint().width()))
             self.add_today_btn.clicked.connect(self._add_to_today)
             right_layout.addWidget(self.add_today_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
@@ -341,6 +383,10 @@ class TaskItemWidget(QWidget):
         layout.addLayout(right_layout)
 
         container_layout.addWidget(self.inner_widget)
+        
+        # Lock the entire card's minimum width dynamically based on its calculated contents
+        self.inner_widget.ensurePolished()
+        self.inner_widget.setMinimumWidth(self.inner_widget.minimumSizeHint().width())
 
     # ─────────────────────────────────────────────────────────────────────
     #  Event filter

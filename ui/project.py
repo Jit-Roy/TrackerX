@@ -104,22 +104,21 @@ class _ElidedLabel(QLabel):
     def __init__(self, text: str, parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self._full_text = text
-        # Ignore size policy so it can shrink below the text's natural width
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.setMinimumWidth(1)
 
     def setText(self, text: str) -> None:
         self._full_text = text
-        self._update_elided()
+        self.update()
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._update_elided()
-
-    def _update_elided(self) -> None:
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
         metrics = QFontMetrics(self.font())
         elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, self.width())
-        super().setText(elided)
+        
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
+        painter.end()
 
     def minimumSizeHint(self) -> QSize:
         return QSize(1, super().minimumSizeHint().height())
