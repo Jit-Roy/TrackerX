@@ -39,6 +39,40 @@ class MainWindow(QMainWindow):
         settings.setValue("windowState", self.saveState())
         super().closeEvent(event)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._apply_dwm_titlebar()
+
+    def _apply_dwm_titlebar(self):
+        import sys
+        if sys.platform != "win32":
+            return
+            
+        try:
+            import ctypes
+            from ctypes import c_int
+            
+            hwnd = int(self.winId())
+            
+            # Match the top of the sidebar gradient (#121216)
+            color = 0x00161212
+            DWMWA_CAPTION_COLOR = 35
+            DWMWA_TEXT_COLOR = 36
+            
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_CAPTION_COLOR, ctypes.byref(c_int(color)), ctypes.sizeof(c_int))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_TEXT_COLOR, ctypes.byref(c_int(color)), ctypes.sizeof(c_int))
+                
+            try:
+                from .helper.win32_utils import hide_titlebar_icon
+                hide_titlebar_icon(hwnd)
+            except Exception:
+                pass
+                
+        except Exception:
+            pass
+
     def _build_ui(self) -> None:
         container = QWidget()
         root = QHBoxLayout(container)
