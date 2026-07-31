@@ -57,7 +57,7 @@ TrackerX is a local-first, privacy-focused desktop productivity suite built with
 
 To launch the TrackerX application, run:
 ```bash
-python trackerx/main.py
+python main.py
 ```
 *Alternatively, if installed as a package, you can just run `trackerx` in your terminal.*
 
