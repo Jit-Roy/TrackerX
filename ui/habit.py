@@ -313,6 +313,7 @@ class HabitFormWidget(QWidget):
         
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; } QWidget#FormCard { background: transparent; }")
         form_card = QWidget()
         form_card.setObjectName("FormCard")

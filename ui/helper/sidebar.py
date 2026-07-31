@@ -191,6 +191,7 @@ class Sidebar(QFrame):
         self.nav.setIconSize(QSize(18, 18))
         self.nav.setSpacing(2)
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._apply_nav_style(collapsed=False)
         root.addWidget(self.nav, 1)
 
