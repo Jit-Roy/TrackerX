@@ -191,7 +191,9 @@ class _GoalRow(QWidget):
         self.entry = entry
         self.parent_page = parent_page
         self.is_today = is_today
+        self._hovered = False
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self._build()
 
     def _build(self) -> None:
@@ -208,11 +210,13 @@ class _GoalRow(QWidget):
 
         self.lbl = QLineEdit(self.entry.title or "New goal")
         self.lbl.setReadOnly(True)
+        self.lbl.setCursor(Qt.CursorShape.ArrowCursor)
+        self.lbl.installEventFilter(self)
         self.lbl.setStyleSheet(
             f"QLineEdit {{ color: {(_TEXT_MUT if done else _TEXT_PRI)}; font-size: 10pt; "
             f"background: transparent; border: none; letter-spacing: 0.1px;"
             + ("; text-decoration: line-through;" if done else "")
-            + f"}} QLineEdit:focus {{ border: 1px solid {_BORDER_TODAY}; border-radius: 4px; background: #222222; text-decoration: none; }}"
+            + f"}} QLineEdit:focus {{ border: none; background: transparent; text-decoration: none; }}"
         )
         self.lbl.returnPressed.connect(self._save_edit)
         lay.addWidget(self.lbl, 1)
@@ -244,6 +248,32 @@ class _GoalRow(QWidget):
 
         self.setStyleSheet("QWidget { background: transparent; }")
 
+    def paintEvent(self, _event) -> None:
+        if self._hovered:
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(255, 255, 255, 12)))
+            painter.drawRoundedRect(26, 1, max(0, self.width() - 28), self.height() - 2, 5, 5)
+            painter.end()
+
+    def enterEvent(self, _event) -> None:
+        self._hovered = True
+        self.update()
+
+    def leaveEvent(self, _event) -> None:
+        self._hovered = False
+        self.update()
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.lbl:
+            if event.type() == event.Type.MouseButtonDblClick:
+                self._edit()
+                return True
+            if event.type() == event.Type.FocusOut and not self.lbl.isReadOnly():
+                self._save_edit()
+        return super().eventFilter(watched, event)
+
     def _toggle(self, checked: bool) -> None:
         if self.entry.id and self.parent_page:
             self.parent_page.toggle_goal_completion(self.entry.id, checked)
@@ -265,11 +295,13 @@ class _GoalRow(QWidget):
 
     def _edit(self) -> None:
         self.lbl.setReadOnly(False)
+        self.lbl.setCursor(Qt.CursorShape.IBeamCursor)
         self.lbl.setFocus()
-        self.lbl.selectAll()
+        self.lbl.setCursorPosition(len(self.lbl.text()))
         
     def _save_edit(self) -> None:
         self.lbl.setReadOnly(True)
+        self.lbl.setCursor(Qt.CursorShape.ArrowCursor)
         self.lbl.clearFocus()
         if self.entry.id and self.parent_page:
             self.entry.title = self.lbl.text().strip() or "Untitled goal"
