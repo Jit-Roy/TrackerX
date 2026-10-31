@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt, QRectF, QSize, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QRectF, QSize, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFormLayout,
     QFrame,
@@ -326,6 +327,7 @@ class PlannerPage(QWidget):
         self._inline_inputs: dict[int, QLineEdit] = {}
         self._needs_center = False
         self.setStyleSheet(f"background: {_BG};")
+        QApplication.instance().installEventFilter(self)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -351,6 +353,20 @@ class PlannerPage(QWidget):
 
     def on_navigated_to(self) -> None:
         self._to_today()
+
+    def eventFilter(self, watched, event) -> bool:
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and isinstance(watched, QWidget)
+            and (watched is self or self.isAncestorOf(watched))
+        ):
+            clicked_input = any(
+                inp is watched or inp.isAncestorOf(watched)
+                for inp in self._inline_inputs.values()
+            )
+            if not clicked_input:
+                self._hide_inline_inputs()
+        return super().eventFilter(watched, event)
 
     # ── Helpers ────────────────────────────────────────────────────────────────
     def _week_days(self) -> list[tuple[str, str, date]]:
@@ -639,6 +655,14 @@ class PlannerPage(QWidget):
                 wrapper.show()
             inp.show()
             inp.setFocus()
+
+    def _hide_inline_inputs(self) -> None:
+        for inp in self._inline_inputs.values():
+            wrapper = inp.property("wrapper")
+            if wrapper:
+                wrapper.hide()
+            inp.clear()
+            inp.clearFocus()
 
     def _save_new_goal(self, day_idx: int, inp: QLineEdit, plan_id: int) -> None:
         text = inp.text().strip()

@@ -8,7 +8,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal, QSize, QByteArray
 from PySide6.QtGui import (
-    QAction, QBrush, QColor, QFont, QPainter, QPen, QPixmap, QIcon,
+    QAction, QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap, QIcon,
     QTextBlockFormat, QTextCursor, QTextOption,
 )
 from PySide6.QtSvg import QSvgRenderer
@@ -47,28 +47,33 @@ _T_PRI     = "#ffffff"
 _T_SEC     = "#9a9a9a"
 _T_TER     = "#555555"
 _T_DIM     = "#333333"
+_SEL_TEXT  = "#e8e8ed"
 _BORDER    = "rgba(255,255,255,0.08)"
 _MONO      = "Courier New"
 
 # Layout constants
 _LEFT_W      = 280
 _AUTOSAVE_MS = 850
-_INDENT_PX   = 18    # px per depth level
+_INDENT_PX   = 24    # px per depth level
 _TREE_LEFT   = 10    # fixed left margin before depth-0 content
 _CHV_W       = 16    # chevron button width
+_CHV_GAP     = 5     # gap between connector endpoint and chevron lane
 
 
 # ── SVG helpers ───────────────────────────────────────────────────────────────
 
 _SVG_CHEVRON_RIGHT = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
-  <polyline points="3,2 7,5 3,8" fill="none" stroke="white"
-            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+    <polyline points="3,2 7,5 3,8" fill="none" stroke="#e8e8ed"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>
 </svg>"""
 
 _SVG_CHEVRON_DOWN = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
-  <polyline points="2,3.5 5,7 8,3.5" fill="none" stroke="white"
-            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+    <polyline points="2,3.5 5,7 8,3.5" fill="none" stroke="#e8e8ed"
+                        stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>
 </svg>"""
+
+_SVG_CHEVRON_RIGHT_DEFAULT = _SVG_CHEVRON_RIGHT.replace(b"#e8e8ed", b"white").replace(b"0.75", b"0.45")
+_SVG_CHEVRON_DOWN_DEFAULT = _SVG_CHEVRON_DOWN.replace(b"#e8e8ed", b"white").replace(b"0.75", b"0.45")
 
 _SVG_SEARCH = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none">
   <circle cx="6.5" cy="6.5" r="4.5" stroke="white" stroke-width="1.3" opacity="0.4"/>
@@ -236,6 +241,9 @@ class _NodeRow(QWidget):
         is_expanded: bool,
         is_selected: bool,
         continues: list[bool],   # continues[i] = True if ancestor at depth i has more siblings
+        is_on_selected_path: bool = False,
+        is_selected_path_node: bool = False,
+        highlighted_connector_levels: set[int] | None = None,
         parent: QWidget | None = None,
         is_creating: bool = False,
     ) -> None:
@@ -245,6 +253,9 @@ class _NodeRow(QWidget):
         self._hovered    = False
         self._depth      = depth
         self._continues  = continues
+        self._on_selected_path = is_on_selected_path
+        self._is_selected_path_node = is_selected_path_node
+        self._highlighted_connector_levels = highlighted_connector_levels or set()
         self.is_creating = is_creating
 
         self.setFixedHeight(28)
@@ -269,7 +280,14 @@ class _NodeRow(QWidget):
             "QPushButton { background: transparent; border: none; padding: 0; }"
         )
         if has_children:
-            icon_svg = _SVG_CHEVRON_DOWN if is_expanded else _SVG_CHEVRON_RIGHT
+            if is_selected:
+                icon_svg = _SVG_CHEVRON_DOWN if is_expanded else _SVG_CHEVRON_RIGHT
+            else:
+                icon_svg = (
+                    _SVG_CHEVRON_DOWN_DEFAULT
+                    if is_expanded
+                    else _SVG_CHEVRON_RIGHT_DEFAULT
+                )
             self._chv.setIcon(_svg_icon(icon_svg, 10))
             self._chv.setIconSize(QSize(10, 10))
             self._chv.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -279,7 +297,7 @@ class _NodeRow(QWidget):
             self._chv.setEnabled(False)
             self._chv.setCursor(Qt.CursorShape.ArrowCursor)
         lay.addWidget(self._chv)
-        lay.addSpacing(4)
+        lay.addSpacing(6)
 
         if is_creating:
             self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -309,7 +327,9 @@ class _NodeRow(QWidget):
             self._lbl.setFont(font)
             self._lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             self._lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            self._lbl.setStyleSheet(f"color: {_T_PRI}; background: transparent;")
+            self._lbl.setStyleSheet(
+                f"color: {_SEL_TEXT if self._selected else _T_PRI}; background: transparent;"
+            )
             lay.addWidget(self._lbl, 1)
 
             # Actions wrapper (+ and Trash)
@@ -437,45 +457,57 @@ class _NodeRow(QWidget):
         W = self.width()
         H = self.height()
 
-        # 1. Background
-        if self._selected:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(QColor(255, 255, 255, 30)))
-            painter.drawRoundedRect(2, 1, W - 4, H - 2, 5, 5)
-            # Left accent bar
-            painter.setBrush(QBrush(QColor(255, 255, 255, 180)))
-            painter.drawRoundedRect(2, 4, 2, H - 8, 1, 1)
-        elif self._hovered:
+        # 1. Hover background
+        if self._hovered:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(255, 255, 255, 12)))
             painter.drawRoundedRect(2, 1, W - 4, H - 2, 5, 5)
 
         # 2. Tree connector lines (only for depth > 0)
         if self._depth > 0:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-            pen = QPen(_LINE_COL, 1)
-            pen.setCosmetic(True)
-            painter.setPen(pen)
-
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             mid = H // 2
 
             for i in range(self._depth):
                 # Center x of the vertical line for ancestor depth i
                 x = _TREE_LEFT + i * _INDENT_PX + _INDENT_PX // 2
+                red_line = i in self._highlighted_connector_levels
+                pen = QPen(
+                    QColor("#e8e8ed") if red_line else _LINE_COL,
+                    1.6,
+                    Qt.PenStyle.SolidLine,
+                    Qt.PenCapStyle.RoundCap,
+                    Qt.PenJoinStyle.RoundJoin,
+                )
+                pen.setCosmetic(True)
+                painter.setPen(pen)
 
                 if i < self._depth - 1:
                     # Ancestor column: draw full vertical line if it continues
-                    if i < len(self._continues) and self._continues[i]:
+                    if red_line or (i < len(self._continues) and self._continues[i]):
                         painter.drawLine(x, 0, x, H)
                 else:
-                    # Direct parent column: draw L-connector
-                    # Top half of vertical (always — connects from parent above)
-                    painter.drawLine(x, 0, x, mid)
-                    # Bottom half — only if there are more siblings after this
-                    if i < len(self._continues) and self._continues[i]:
-                        painter.drawLine(x, mid, x, H)
-                    # Horizontal connector to item
-                    painter.drawLine(x, mid, x + _INDENT_PX // 2 + 2, mid)
+                    # Direct parent column: draw a rounded branch connector.
+                    curve = 8
+                    if red_line and not self._is_selected_path_node:
+                        painter.drawLine(x, 0, x, H)
+
+                    if not red_line or self._is_selected_path_node:
+                        path = QPainterPath()
+                        path.moveTo(x, 0)
+                        path.lineTo(x, mid - curve)
+                        path.cubicTo(
+                            x,
+                            mid - curve // 2,
+                            x + curve // 2,
+                            mid,
+                            x + curve,
+                            mid,
+                        )
+                        child_arrow_left = _TREE_LEFT + (i + 1) * _INDENT_PX
+                        path.lineTo(child_arrow_left - _CHV_GAP, mid)
+                        painter.drawPath(path)
+
 
         painter.end()
 
@@ -483,6 +515,10 @@ class _NodeRow(QWidget):
 
     def set_selected(self, val: bool) -> None:
         self._selected = val
+        if hasattr(self, "_lbl"):
+            self._lbl.setStyleSheet(
+                f"color: {_SEL_TEXT if val else _T_PRI}; background: transparent;"
+            )
         self.update()
 
     def enterEvent(self, _) -> None:
@@ -748,6 +784,17 @@ class _LeftPanel(QWidget):
         self._clear_body()
         self._rows = []
 
+        selected_path: set[int] = set()
+        current_id = self._selected
+        selected_depth = 0
+        while current_id is not None:
+            selected_path.add(current_id)
+            node = self.service.get_node(current_id)
+            if node and node.parent_id is not None:
+                selected_depth += 1
+            current_id = node.parent_id if node else None
+        selected_connector_level = selected_depth - 1 if selected_depth > 0 else None
+
         roots = [n for n in self.service.get_root_nodes() if n.id not in self._hidden]
 
         if not roots:
@@ -759,7 +806,14 @@ class _LeftPanel(QWidget):
             )
             self._body_lay.addWidget(hint)
         else:
-            self._render_level(roots, depth=0, continues=[])
+            self._render_level(
+                roots,
+                depth=0,
+                continues=[],
+                selected_path=selected_path,
+                highlighted_connector_levels=set(),
+                selected_connector_level=selected_connector_level,
+            )
             if self._is_creating_node and self._creating_parent_id is None:
                 self._insert_creating_row(depth=0, continues=[])
 
@@ -776,6 +830,9 @@ class _LeftPanel(QWidget):
         nodes: list[NoteNode],
         depth: int,
         continues: list[bool],
+        selected_path: set[int],
+        highlighted_connector_levels: set[int],
+        selected_connector_level: int | None,
     ) -> None:
         """
         Recursively render visible rows.
@@ -785,6 +842,10 @@ class _LeftPanel(QWidget):
                                    line through this row at that depth column.
         """
         visible_nodes = [n for n in nodes if n.id not in self._hidden]
+        selected_branch_index = next(
+            (idx for idx, node in enumerate(visible_nodes) if node.id in selected_path),
+            None,
+        )
         for idx, node in enumerate(visible_nodes):
             is_last    = idx == len(visible_nodes) - 1
             has_ch     = self.service.node_has_children(node.id)
@@ -794,6 +855,15 @@ class _LeftPanel(QWidget):
             # continues for the current node: ancestors' state + whether THIS
             # node's parent column should continue (i.e., this node is not last)
             node_continues = continues + [not is_last]
+            row_connector_levels = set(highlighted_connector_levels)
+            child_connector_levels = set(highlighted_connector_levels)
+            if selected_branch_index is not None and idx <= selected_branch_index and depth > 0:
+                if selected_connector_level == depth - 1:
+                    row_connector_levels.add(depth - 1)
+                    if idx < selected_branch_index:
+                        child_connector_levels.add(depth - 1)
+                elif node.id in selected_path:
+                    row_connector_levels.add(depth - 1)
 
             row = _NodeRow(
                 node_id=node.id,
@@ -803,6 +873,12 @@ class _LeftPanel(QWidget):
                 is_expanded=is_exp,
                 is_selected=is_sel,
                 continues=node_continues,
+                is_on_selected_path=(
+                    selected_branch_index is not None
+                    and idx <= selected_branch_index
+                ),
+                is_selected_path_node=node.id in selected_path,
+                highlighted_connector_levels=row_connector_levels,
             )
             row.node_clicked.connect(self._on_node_clicked)
             row.toggle_expand.connect(self._on_toggle_expand)
@@ -819,7 +895,14 @@ class _LeftPanel(QWidget):
                 children = self.service.get_node_children(node.id)
                 # child_continues: same as node_continues (each child knows whether
                 # its OWN parent column continues — handled recursively)
-                self._render_level(children, depth + 1, node_continues)
+                self._render_level(
+                    children,
+                    depth + 1,
+                    node_continues,
+                    selected_path,
+                    child_connector_levels,
+                    selected_connector_level,
+                )
             
             # If we are creating a child for THIS node, inject it after its children
             if self._is_creating_node and self._creating_parent_id == node.id:
@@ -848,8 +931,7 @@ class _LeftPanel(QWidget):
 
     def _on_node_clicked(self, node_id: int) -> None:
         self._selected = node_id
-        for row in self._rows:
-            row.set_selected(row.node_id == node_id)
+        self.populate(select_node_id=node_id)
         self.note_selected.emit(node_id)
 
     # ── Expand / collapse ─────────────────────────────────────────────────
