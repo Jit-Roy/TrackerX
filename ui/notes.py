@@ -58,6 +58,7 @@ _INDENT_PX   = 24    # px per depth level
 _TREE_LEFT   = 10    # fixed left margin before depth-0 content
 _CHV_W       = 16    # chevron button width
 _CHV_GAP     = 5     # gap between connector endpoint and chevron lane
+_HOVER_PAD   = 4     # small inset before the title hover background
 
 
 # ── SVG helpers ───────────────────────────────────────────────────────────────
@@ -224,6 +225,8 @@ class _NodeRow(QWidget):
     """
 
     node_clicked   = Signal(int)
+    double_clicked = Signal(int)
+    editing_started = Signal()
     toggle_expand  = Signal(int)
     add_child_req  = Signal(int)
     rename_req     = Signal(int)
@@ -267,6 +270,7 @@ class _NodeRow(QWidget):
 
         # Content starts after indentation
         content_x = _TREE_LEFT + depth * _INDENT_PX
+        self._title_x = content_x + _CHV_W + 6
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(content_x, 0, 6, 0)
@@ -402,6 +406,8 @@ class _NodeRow(QWidget):
     def start_inline_edit(self) -> None:
         if hasattr(self, '_edit') and self._edit.isVisible():
             return
+
+        self.editing_started.emit()
             
         self._lbl.hide()
         self._actions_wrap.hide()
@@ -461,7 +467,14 @@ class _NodeRow(QWidget):
         if self._hovered:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(255, 255, 255, 12)))
-            painter.drawRoundedRect(2, 1, W - 4, H - 2, 5, 5)
+            painter.drawRoundedRect(
+                max(0, self._title_x - _HOVER_PAD),
+                1,
+                max(0, W - self._title_x - 2 + _HOVER_PAD),
+                H - 2,
+                5,
+                5,
+            )
 
         # 2. Tree connector lines (only for depth > 0)
         if self._depth > 0:
@@ -540,6 +553,7 @@ class _NodeRow(QWidget):
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_creating', False):
+            self.double_clicked.emit(self.node_id)
             self.start_inline_edit()
         super().mouseDoubleClickEvent(event)
 
@@ -630,6 +644,10 @@ class _LeftPanel(QWidget):
         self._selected: int | None = None
         self._rows: list[_NodeRow] = []
         self._searching = False
+        self._selection_refresh_timer = QTimer(self)
+        self._selection_refresh_timer.setSingleShot(True)
+        self._selection_refresh_timer.setInterval(180)
+        self._selection_refresh_timer.timeout.connect(self._refresh_selection_path)
 
         self.setFixedWidth(_LEFT_W)
         self.setStyleSheet(f"background: {_LEFT_BG};")
@@ -881,6 +899,8 @@ class _LeftPanel(QWidget):
                 highlighted_connector_levels=row_connector_levels,
             )
             row.node_clicked.connect(self._on_node_clicked)
+            row.double_clicked.connect(self._on_node_double_clicked)
+            row.editing_started.connect(self._on_node_editing_started)
             row.toggle_expand.connect(self._on_toggle_expand)
             row.add_child_req.connect(self._add_child_node)
             row.rename_req.connect(self._rename_node)
@@ -931,8 +951,21 @@ class _LeftPanel(QWidget):
 
     def _on_node_clicked(self, node_id: int) -> None:
         self._selected = node_id
-        self.populate(select_node_id=node_id)
+        for row in self._rows:
+            row.set_selected(row.node_id == node_id)
+        self._selection_refresh_timer.start()
         self.note_selected.emit(node_id)
+
+    def _on_node_double_clicked(self, _node_id: int) -> None:
+        self._selection_refresh_timer.stop()
+
+    def _on_node_editing_started(self) -> None:
+        self._selection_refresh_timer.stop()
+
+    def _refresh_selection_path(self) -> None:
+        if any(hasattr(row, "_edit") and row._edit.isVisible() for row in self._rows):
+            return
+        self.populate(select_node_id=self._selected)
 
     # ── Expand / collapse ─────────────────────────────────────────────────
 
