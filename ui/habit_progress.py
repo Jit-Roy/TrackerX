@@ -216,7 +216,7 @@ class _YearCalendarGraph(QWidget):
         
         # optional: border for current month
         if year == today.year and month == today.month:
-            br = QRect(x-4, y+16, 7 * (dot_r + dot_gap) + 8 - dot_gap, 5 * (dot_r + dot_gap) + 8 - dot_gap)
+            br = QRect(x-4, y+16, 7 * (dot_r + dot_gap) + 8 - dot_gap, 5 * (dot_r + dot_gap) + 5 - dot_gap)
             p.setPen(QPen(QColor("#444444"), 1))
             p.setBrush(Qt.GlobalColor.transparent)
             p.drawRoundedRect(br, 4, 4)
