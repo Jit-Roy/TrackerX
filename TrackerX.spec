@@ -1,10 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+from pathlib import Path
+
+runtime_bin = Path(sys.prefix) / "Library" / "bin"
+runtime_dlls = [
+    (runtime_bin / name, ".")
+    for name in ("sqlite3.dll", "liblzma.dll", "libbz2.dll", "libmpdec.dll", "ffi.dll")
+    if (runtime_bin / name).exists()
+]
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=[(str(source), target) for source, target in runtime_dlls],
     datas=[('assets', 'assets')],
     hiddenimports=[],
     hookspath=[],
