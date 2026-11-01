@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 
 
 def app_data_dir() -> Path:
-    base = Path.home() / ".trackerx"
+    local_app_data = os.getenv("LOCALAPPDATA")
+    base = Path(local_app_data) / "TrackerX" if local_app_data else Path.home() / ".trackerx"
     base.mkdir(parents=True, exist_ok=True)
     return base
 

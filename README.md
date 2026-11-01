@@ -2,7 +2,12 @@
   <img src="docs/img/Banner.png" alt="TrackerX Banner">
 </p>
 
-# TrackerX
+<p align="center">
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="https://doc.qt.io/qtforpython-6/"><img src="https://img.shields.io/badge/GUI-PySide6-41CD52?logo=qt&logoColor=white" alt="PySide6"></a>
+  <a href="https://pyinstaller.org/"><img src="https://img.shields.io/badge/Build-PyInstaller-425B9C" alt="PyInstaller"></a>
+  <a href="https://github.com/Jit-Roy/TrackerX/stargazers"><img src="https://img.shields.io/github/stars/Jit-Roy/TrackerX?style=flat&logo=github" alt="GitHub stars"></a>
+</p>
 
 TrackerX is a local-first, privacy-focused desktop productivity suite built with Python and PySide6. It provides a comprehensive set of tools to help you manage your daily tasks, habits, projects, and personal journal, all in one sleek, modern desktop application.
 
@@ -22,6 +27,8 @@ TrackerX is a local-first, privacy-focused desktop productivity suite built with
 - **Project Management**: Break down large goals into manageable projects and tasks.
 - **Personal Diary**: Keep a secure, local journal for your daily thoughts and reflections.
 - **Local-First & Private**: All your data is securely stored locally on your machine. No cloud syncs, no privacy concerns.
+
+TrackerX stores its local application data in `%LOCALAPPDATA%\TrackerX` on Windows. The SQLite database is `trackerx.sqlite3`, and backups are stored in the `backups` subdirectory.
 
 ## 🛠️ Technology Stack
 
