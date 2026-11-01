@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -20,6 +20,7 @@ class TrackerXApp:
         self.qt_app.setOrganizationName("TrackerX")
         self.database = Database(APP_PATHS.database_path)
         self.service = ProductivityService(self.database)
+        self.apply_theme(self.service.get_setting("theme", "dark"))
         self.app_icon = build_orbit_icon(256)
         self.qt_app.setWindowIcon(self.app_icon)
         self.window = MainWindow(self.service)
@@ -30,7 +31,6 @@ class TrackerXApp:
         self.tray.setIcon(self._build_tray_icon())
         if QSystemTrayIcon.isSystemTrayAvailable() and not self.tray.icon().isNull():
             self.tray.show()
-        self.apply_theme(self.service.get_setting("theme", "dark"))
 
     def _build_tray_icon(self) -> QIcon:
         return build_orbit_icon(16)
@@ -44,4 +44,5 @@ class TrackerXApp:
         self.window.sidebar.setup_icons()
         self.window.today.toolbar.setup_icons()
         self.window.show()
+        QTimer.singleShot(0, self.window.restore_saved_state)
         return self.qt_app.exec()

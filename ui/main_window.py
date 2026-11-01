@@ -24,9 +24,8 @@ class MainWindow(QMainWindow):
         self.resize(1520, 960)
         self._build_ui()
         self._wire_services()
-        self._restore_state()
 
-    def _restore_state(self) -> None:
+    def restore_saved_state(self) -> None:
         settings = QSettings("Jit-Roy", "TrackerX")
         if settings.contains("geometry"):
             self.restoreGeometry(settings.value("geometry"))
@@ -65,7 +64,8 @@ class MainWindow(QMainWindow):
                 hwnd, DWMWA_TEXT_COLOR, ctypes.byref(c_int(color)), ctypes.sizeof(c_int))
                 
             try:
-                from .helper.win32_utils import hide_titlebar_icon
+                from .helper.win32_utils import hide_titlebar_icon, set_taskbar_icon
+                set_taskbar_icon(hwnd)
                 hide_titlebar_icon(hwnd)
             except Exception:
                 pass
